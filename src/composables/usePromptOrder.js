@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue'
 import { useWorldbook } from './useWorldbook'
 import { usePersona } from './usePersona'
 import { useStickers } from './useStickers'
+import { useMusic } from './useMusic'
 
 const KEY = 'promptOrder'
 const KEY_CUSTOM = 'customPrompts'
@@ -50,6 +51,7 @@ export function usePromptOrder() {
   const { worldbooks, enabledWorldbooks } = useWorldbook()
   const { personas } = usePersona()
   const { stickerGroups } = useStickers()
+  const { musicState } = useMusic()
 
   const getOrderName = (key) => ORDER_NAMES[key] || key
   const getOrderIcon = (key) => ORDER_ICONS[key] || 'fas fa-circle'
@@ -80,12 +82,10 @@ export function usePromptOrder() {
 
   const getOnlineChatProtocol = (availableStickers = []) => {
     const stickerNames = availableStickers.length > 0 ? availableStickers.map(s => s.name).join(', ') : '暂无'
-    return `[系统指令：通信协议与格式 (严格遵守)]
+    return `[聊天指导：关于网聊的基本素养 ]
 你现在正在通过现代通讯软件与用户进行【纯线上聊天】。
-【绝对禁止】：严禁在回复中使用星号或括号包裹任何动作描写(如 *微笑* 或 (端起茶杯))。你只能通过打字、发图、转账、语音等线上行为交互。
-
+【绝对禁止】：严禁在回复中使用星号或括号包裹任何动作描写，这看起来很奇怪。你只能通过打字、发图、转账、语音等线上行为交互。
 你必须将你要发送的内容用 <msg type="类型" 属性="值">内容</msg> 标签包裹。支持多个标签模拟连发。
-允许内部插 HTML 标签加粗或改色。
 
 支持的 type 类型：
 1. text: 纯文本。
@@ -96,108 +96,84 @@ export function usePromptOrder() {
 6. location: 发位置。内容写地名。
 7. image: 发图片。内容写你的图片视觉描述。
 8. voice: 发语音。内容写你语音里说的话。
-9. sticker: 发表情包。内容写表情包名。已知你的表情包库：${stickerNames}`
+9. sticker: 发表情包。已知你的表情包库：${stickerNames}
+10. music_share: 推荐音乐给用户。属性: name="歌名", artist="歌手"。内容写分享语。
+11. music_colisten_req: 邀请用户一起听歌。内容写邀请语。
+12. music_cmd: 音乐设备控制。属性: action="play", name="你要放的歌名", artist="歌手"。内容写你的播歌前摇语。(注意：仅在“一起听”状态下你才可以切歌！)`
   }
 
-  // === 核心逻辑：动态组装包含变量状态和条件注入的 Character Prompt ===
   const buildCharacterPrompt = (char, chatVariablesState) => {
     if (!char) return ''
     let prompt = char.description || ''
-
-    // 如果开启了高级变量设置
     if (char.advancedSettingsEnabled) {
-      // 1. 注入状态更新指令
       if (char.statusUpdatePrompt) prompt += `\n\n${char.statusUpdatePrompt}`
-      
       const valState = chatVariablesState || {}
-      
-      // 2. 注入当前状态值
-      if (Object.keys(valState).length > 0) {
-        prompt += `\n\n[当前变量状态]\n` + Object.entries(valState).map(([k, v]) => `- ${k}: ${v}`).join('\n')
-      }
-
-      // 3. 执行条件判断，注入专属阶段提示词
+      if (Object.keys(valState).length > 0) prompt += `\n\n[当前变量状态]\n` + Object.entries(valState).map(([k, v]) => `- ${k}: ${v}`).join('\n')
       let activeCondPrompts = []
       if (char.variables) {
         char.variables.forEach(v => {
-          let currentVal = valState[v.name];
-          if (currentVal === undefined) currentVal = v.default;
-          
+          let currentVal = valState[v.name]; if (currentVal === undefined) currentVal = v.default;
           if (v.conditions) {
             v.conditions.forEach(cond => {
               let isMatch = false;
-              if (v.type === 'boolean') {
-                isMatch = String(currentVal) === String(cond.value);
-              } else {
+              if (v.type === 'boolean') { isMatch = String(currentVal) === String(cond.value); }
+              else {
                 const numVal = parseFloat(currentVal);
-                if (cond.operator === 'between') {
-                  isMatch = numVal >= parseFloat(cond.valueMin) && numVal <= parseFloat(cond.valueMax);
-                } else if (cond.operator === '==') {
-                  isMatch = numVal == parseFloat(cond.value);
-                } else if (cond.operator === '>') {
-                  isMatch = numVal > parseFloat(cond.value);
-                } else if (cond.operator === '<') {
-                  isMatch = numVal < parseFloat(cond.value);
-                } else if (cond.operator === '>=') {
-                  isMatch = numVal >= parseFloat(cond.value);
-                } else if (cond.operator === '<=') {
-                  isMatch = numVal <= parseFloat(cond.value);
-                }
+                if (cond.operator === 'between') isMatch = numVal >= parseFloat(cond.valueMin) && numVal <= parseFloat(cond.valueMax);
+                else if (cond.operator === '==') isMatch = numVal == parseFloat(cond.value);
+                else if (cond.operator === '>') isMatch = numVal > parseFloat(cond.value);
+                else if (cond.operator === '<') isMatch = numVal < parseFloat(cond.value);
+                else if (cond.operator === '>=') isMatch = numVal >= parseFloat(cond.value);
+                else if (cond.operator === '<=') isMatch = numVal <= parseFloat(cond.value);
               }
-              if (isMatch && cond.prompt && cond.prompt.trim()) {
-                activeCondPrompts.push(cond.prompt.trim());
-              }
+              if (isMatch && cond.prompt && cond.prompt.trim()) activeCondPrompts.push(cond.prompt.trim());
             })
           }
         })
       }
-      
-      if (activeCondPrompts.length > 0) {
-        prompt += `\n\n[当前阶段专属设定]\n` + activeCondPrompts.join('\n\n')
-      }
+      if (activeCondPrompts.length > 0) prompt += `\n\n[当前阶段专属设定]\n` + activeCondPrompts.join('\n\n')
     }
-    
     return prompt.trim()
   }
 
-  const previewData = computed(() => {
-    let text = '', staticTokenStr = ''
-    promptOrder.value.forEach((item) => {
-      if (item.key === 'functional') { const fp = getOnlineChatProtocol([]); text += `[线上聊天协议指导]\n${fp}\n\n`; staticTokenStr += fp }
-      else if (item.type === 'custom_category') { const catItems = customPrompts.value.filter(p => p.category === item.category); if (catItems.length > 0) { text += `[组 · ${item.category}]\n`; catItems.forEach(cp => { text += `  · ${cp.name}: ${cp.content}\n`; staticTokenStr += cp.content }); text += '\n' } }
-      else if (item.key === 'global_worldbook') { if (enabledWorldbooks.value.length > 0) { text += `[全局世界书]\n`; enabledWorldbooks.value.forEach((wb) => { text += `  · ${wb.title}: ${wb.content}\n`; staticTokenStr += wb.content }); text += '\n' } }
-      else if (item.key === 'local_worldbook') { text += `[局部世界书] (因聊天绑定动态生效)\n\n` }
-      else if (item.key === 'persona') { text += `[我的人设] (全局或聊天专属覆盖)\n\n` }
-      else if (item.key === 'character') { text += `[角色设定] (动态条件注入)\n\n` }
-      else if (item.key === 'memory') { text += `[长期记忆库] (动态提取)\n\n` }
-      else if (item.key === 'chat_history') { text += `[聊天记录] (动态切片)\n\n` }
-    })
-    return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
-  })
+  // 时间格式化辅助函数
+  const formatDate = (ts) => {
+    const d = new Date(ts)
+    return `[${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}]`
+  }
+
+  const previewData = computed(() => { return { text: '预览已折叠', tokens: 0 } })
 
   const buildApiMessages = (currentChat, activeMessages, activeMemories) => {
     const apiMessages = []
-    
     let availableStickers = []
-    if (currentChat.boundStickerGroups && currentChat.boundStickerGroups.length > 0) {
+    if (currentChat.boundStickerGroups) {
       currentChat.boundStickerGroups.forEach(gid => {
         const group = stickerGroups.value.find(g => g.id === gid)
         if (group) availableStickers.push(...group.stickers)
       })
     }
-
-    let activePersona = personas.value.find((p) => p.isActive)
-    if (currentChat.boundPersonaId) {
-      const overrideP = personas.value.find(p => p.id === currentChat.boundPersonaId)
-      if (overrideP) activePersona = overrideP
-    }
+    let activePersona = personas.value.find(p => p.id === currentChat.boundPersonaId) || personas.value.find(p => p.isActive)
 
     promptOrder.value.forEach((item) => {
-      if (item.key === 'functional') { apiMessages.push({ role: 'system', content: getOnlineChatProtocol(availableStickers) }) }
+      if (item.key === 'functional') { 
+        let baseProtocol = getOnlineChatProtocol(availableStickers)
+        if (musicState.coListenCharId === currentChat.id && musicState.currentSongName) {
+          const queueList = musicState.playlist.slice(musicState.currentIndex + 1, musicState.currentIndex + 4)
+          let queueStr = queueList.length > 0 ? `接下来的播放队列依次是：${queueList.map(s => `《${s.name}》`).join('、')}。` : ''
+          baseProtocol += `\n\n[🎶 音乐同频系统状态]
+你和用户正在“一起听”音乐！
+当前正在播放：《${musicState.currentSongName}》- ${musicState.currentArtist}
+${musicState.islandSubtitle ? `当前刚好唱到这句歌词：“${musicState.islandSubtitle}”` : ''}
+${queueStr}
+你可以结合歌词回复，也可以把它当bgm继续聊。如果你有想听的歌，可以使用 <msg type="music_cmd" action="play"> 为用户切一首新歌。`
+        }
+        apiMessages.push({ role: 'system', content: baseProtocol }) 
+      }
       else if (item.type === 'custom_category') { const catItems = customPrompts.value.filter(p => p.category === item.category); catItems.forEach(cp => apiMessages.push({ role: cp.injectRole || 'system', content: cp.content })) }
       else if (item.key === 'global_worldbook') { enabledWorldbooks.value.forEach((wb) => apiMessages.push({ role: wb.injectRole || 'system', content: wb.content })) }
       else if (item.key === 'local_worldbook') {
-        if (currentChat.boundWorldbookIds && currentChat.boundWorldbookIds.length > 0) {
+        if (currentChat.boundWorldbookIds) {
           currentChat.boundWorldbookIds.forEach(wid => {
             const wb = worldbooks.value.find(w => w.id === wid)
             if (wb) apiMessages.push({ role: wb.injectRole || 'system', content: wb.content })
@@ -207,29 +183,27 @@ export function usePromptOrder() {
       else if (item.key === 'persona') { if (activePersona) apiMessages.push({ role: 'system', content: activePersona.content }) }
       else if (item.key === 'character') {
         let charPrompt = ''
-        if (currentChat.isGroup && currentChat.participants) {
-          charPrompt = '你正在模拟群聊。角色列表：\n' + currentChat.participants.map((c) => `- ${c.name}：\n${buildCharacterPrompt(c, currentChat.variablesState)}`).join('\n\n')
-        } else {
-          const char = (currentChat.participants && currentChat.participants.length > 0) ? currentChat.participants[0] : null
-          charPrompt = buildCharacterPrompt(char, currentChat.variablesState)
-        }
+        if (currentChat.isGroup && currentChat.participants) charPrompt = '群聊列表：\n' + currentChat.participants.map((c) => `- ${c.name}：\n${buildCharacterPrompt(c, currentChat.variablesState)}`).join('\n\n')
+        else charPrompt = buildCharacterPrompt(currentChat.participants?.[0], currentChat.variablesState)
         if (charPrompt.trim()) apiMessages.push({ role: 'system', content: charPrompt.trim() })
       }
       else if (item.key === 'memory') {
         if (activeMemories && activeMemories.length > 0) {
           const memStr = activeMemories.map((m, i) => `${i+1}. [${m.date}] ${m.text}`).join('\n')
-          apiMessages.push({ role: 'system', content: `[已提取的长期记忆]\n${memStr}` })
+          apiMessages.push({ role: 'system', content: `[长期记忆]\n${memStr}` })
         }
       }
       else if (item.key === 'chat_history') {
         const contextCount = Number(currentChat.settings?.contextMessageCount) || 20
-        const safeMessages = activeMessages || []
-        const recentMessages = safeMessages.slice(-contextCount)
+        const recentMessages = (activeMessages || []).slice(-contextCount)
 
         const history = recentMessages
           .filter((m) => m.role !== 'system')
           .map((m) => {
+            // 核心修复：提取并拼接精确的时间戳前缀！
+            const timePrefix = formatDate(m.timestamp || m.id) + ' '
             let prefix = '', cont = m.content
+            
             if (m.type === 'recalled') { prefix = '【撤回了一条消息】原内容：'; cont = m.oldContent || m.content }
             else if (m.type === 'transfer') prefix = `【发起转账: ￥${m.amount}，状态: ${m.status}】备注：`
             else if (m.type === 'voice') prefix = '【发了一条语音消息】原话：'
@@ -237,7 +211,12 @@ export function usePromptOrder() {
             else if (m.type === 'sticker') prefix = '【发送表情包】'
             else if (m.type === 'location') prefix = '【发送位置】'
             else if (m.type === 'quote') prefix = `【引用回复: "${m.refText}"】`
-            return { role: m.role === 'ai' ? 'assistant' : 'user', content: prefix + cont }
+            else if (m.type === 'lyric_share') prefix = `【分享了一句歌词："${m.text}"】来自歌曲《${m.song}》。附加语：`
+            else if (m.type === 'music_share') prefix = `【推荐了一首歌: 《${m.name}》- ${m.artist}】附加语：`
+            else if (m.type === 'music_colisten_req') prefix = `【发出了“一起听歌”邀请】`
+            else if (m.type === 'music_cmd') prefix = `【使用了切歌，换成了: 《${m.name}》】附加语：`
+            
+            return { role: m.role === 'ai' ? 'assistant' : 'user', content: timePrefix + prefix + cont }
           })
         apiMessages.push(...history)
       }
@@ -247,4 +226,3 @@ export function usePromptOrder() {
 
   return { promptOrder, customPrompts, getOrderName, getOrderIcon, moveOrder, moveCustomItem, saveCustomPrompt, deleteCustomPrompts, previewData, buildApiMessages, buildCharacterPrompt }
 }
-

@@ -3,7 +3,8 @@
     
     <component :is="'style'" v-if="chat.customCss">{{ chat.customCss }}</component>
 
-    <div class="app-header">
+    <!-- 顶部导航栏增加了避让灵动岛的间距 -->
+    <div class="app-header" style="padding-top: env(safe-area-inset-top, 40px); min-height: calc(env(safe-area-inset-top, 40px) + 50px);">
       <div class="btn-back" @click="$emit('exit')" v-if="!isSelectionMode">
         <i class="fas fa-chevron-left"></i>
       </div>
@@ -17,195 +18,126 @@
       </div>
     </div>
 
-    <!-- 动态聊天区背景 -->
+    <!-- 动态聊天区 -->
     <div class="chat-area" ref="chatBox" :style="chat.bgImage ? { backgroundImage: `url(${chat.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
       <div v-if="chat.bgImage" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.2); pointer-events:none; z-index:0;"></div>
 
       <template v-for="(msg, index) in visibleMessages" :key="msg.id">
-        <div style="position:relative; z-index:1; width:100%;">
-          
-          <div class="msg-time" v-if="checkShowTime(index)">{{ formatMsgTime(msg) }}</div>
-
-          <div v-if="msg.role === 'system'" class="msg-system">{{ msg.content }}</div>
-          
-          <div v-else-if="msg.type === 'recalled'" class="msg-recall">
-            "{{ msg.role === 'user' ? '你' : chat.title || '对方' }}" 撤回了一条消息
-            <span v-if="msg.oldContent" style="color:#5c8aff; cursor:pointer; margin-left:4px;" @click="viewRecall(msg.oldContent)">查看原话</span>
-          </div>
-
-          <div v-else-if="msg.type === 'transfer_reply' || msg.type === 'action'" style="display:none;"></div>
-          
-          <div v-else :class="['msg-row-wrap', { 'selectable': isSelectionMode }]" @click="toggleSelect(msg.id)">
-            <div class="msg-checkbox" :class="{ 'checked': selectedIds.includes(msg.id) }" v-if="isSelectionMode"></div>
-
-            <div :class="['msg-row', msg.role === 'user' ? 'is-user' : 'is-ai']">
-              <div class="msg-avatar" :style="getAvatarStyle(msg.role)">{{ getAvatarInitials(msg.role) }}</div>
-              
-              <div class="msg-content-wrapper">
-                <div v-if="msg.refText" class="msg-quote"><i class="fas fa-quote-left" style="color:#ccc; margin-right:4px;"></i> {{ msg.refText }}</div>
-                
-                <template v-if="msg.type === 'transfer'">
-                  <div :class="['msg-bubble is-transfer', msg.status]" 
-                       @touchstart="startPress(msg)" @touchend="clearPress" @mousedown="startPress(msg)" @mouseup="clearPress"
-                       @click.stop="handleTransferClick(msg)">
-                    <i :class="msg.status === 'accepted' ? 'fas fa-check-circle' : msg.status === 'rejected' ? 'fas fa-times-circle' : 'fas fa-exchange-alt'"></i>
-                    <div>
-                      <div class="amt" :style="msg.status === 'rejected' ? 'color:#888;' : ''">￥{{ msg.amount }}</div>
-                      <div class="desc" :style="msg.status === 'rejected' ? 'color:#888;' : ''">{{ msg.status === 'accepted' ? '已被领取' : msg.status === 'rejected' ? '已退回' : msg.content || '转账' }}</div>
-                    </div>
-                  </div>
-                </template>
-
-                <template v-else-if="msg.type === 'location'">
-                  <div class="msg-bubble is-location" @touchstart="startPress(msg)" @touchend="clearPress" @mousedown="startPress(msg)" @mouseup="clearPress">
-                    <i class="fas fa-map-marker-alt"></i><span>{{ msg.content }}</span>
-                  </div>
-                </template>
-
-                <template v-else-if="msg.type === 'image' || msg.type === 'sticker'">
-                  <div class="msg-bubble is-image" @touchstart="startPress(msg)" @touchend="clearPress" @mousedown="startPress(msg)" @mouseup="clearPress">
-                    <img v-if="msg.type === 'sticker' && getStickerUrl(msg.content)" :src="getStickerUrl(msg.content)" class="real-sticker" />
-                    <div v-else class="msg-pseudo-img">
-                      <i :class="msg.type === 'sticker' ? 'fas fa-smile-wink' : 'fas fa-image'" style="font-size:24px; margin-bottom:8px; display:block;"></i>
-                      [{{ msg.type === 'sticker' ? '表情包' : '图片' }}] <br/> {{ msg.content }}
-                    </div>
-                  </div>
-                </template>
-
-                <template v-else-if="msg.type === 'voice'">
-                  <div class="msg-bubble is-voice" 
-                       @touchstart="startPress(msg)" @touchend="clearPress" @mousedown="startPress(msg)" @mouseup="clearPress"
-                       @click.stop="msg.showText = !msg.showText" :style="{ width: Math.min(60 + msg.content.length * 5, 200) + 'px' }">
-                    <i class="fas fa-wifi" style="transform: rotate(90deg); color: #888;"></i>
-                  </div>
-                  <div v-if="msg.showText" class="voice-text">{{ msg.content }}</div>
-                </template>
-
-                <template v-else-if="msg.type === 'text' || msg.type === 'quote' || !msg.type">
-                  <div :class="['msg-bubble']" 
-                       @touchstart="startPress(msg)" @touchend="clearPress" @mousedown="startPress(msg)" @mouseup="clearPress">
-                    <span v-html="msg.content"></span>
-                  </div>
-                </template>
-                
-                <template v-else>
-                  <div style="display:none;"></div>
-                </template>
-                
-              </div>
-            </div>
-          </div>
-        </div>
+        <ChatMessageItem 
+          :msg="msg"
+          :chat="chat"
+          :isSelectionMode="isSelectionMode"
+          :isSelected="selectedIds.includes(msg.id)"
+          :showTime="index === 0 || (msg.timestamp || Math.floor(msg.id)) - (visibleMessages[index-1].timestamp || Math.floor(visibleMessages[index-1].id)) > 5*60*1000"
+          @toggle-select="toggleSelect"
+          @press="startPress"
+          @clear-press="clearPress"
+          @click-transfer="handleTransferClick"
+          @click-music-share="handleMusicShareClick"
+          @click-colisten="handleColistenReqClick"
+          @view-recall="viewRecall"
+          @toggle-voice="(m) => { m.showText = !m.showText }"
+        />
       </template>
 
+      <!-- 等待气泡 -->
       <div v-if="isWaiting" class="msg-row is-ai" style="position:relative; z-index:1; width:100%;">
-        <div class="msg-avatar" :style="getAvatarStyle('ai')">{{ getAvatarInitials('ai') }}</div>
-        <div class="msg-content-wrapper"><div class="msg-bubble"><i class="fas fa-circle-notch fa-spin"></i></div></div>
-      </div>
-    </div>
-
-    <!-- 底部输入栏 -->
-    <div class="chat-input-area" style="flex-direction:column; padding: 10px 15px calc(15px + env(safe-area-inset-bottom, 0px)); gap:10px; position:relative; z-index:20;">
-      
-      <div v-if="isSelectionMode" style="display:flex; justify-content:space-around; padding:10px 0;">
-        <i class="fas fa-trash" style="font-size:20px; color:#ff5252;" @click="deleteSelected"></i>
-      </div>
-      
-      <div v-else style="display:flex; gap:8px; align-items:center; width:100%;">
-        <div class="action-icon-btn" style="background:#eef2ff; color:#5c8aff; border-radius:50%; width:36px; height:36px; font-size:16px;" @click="triggerAiReply">
-          <i class="fas fa-robot"></i>
-        </div>
-
-        <div v-if="quotingText" style="position:absolute; top:-40px; left:15px; right:15px; background:rgba(240,240,240,0.9); padding:8px 15px; border-radius:10px; font-size:11px; color:#666; display:flex; justify-content:space-between; box-shadow:0 2px 10px rgba(0,0,0,0.05);">
-          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">引用：{{ quotingText }}</span>
-          <i class="fas fa-times" style="cursor:pointer;" @click="quotingText = ''"></i>
-        </div>
-
-        <input type="text" class="chat-input" v-model="inputText" @keyup.enter="handleSendLocal" placeholder="输入消息..." style="flex:1; min-width:0;" />
-        
-        <div class="action-icon-btn" @click="toggleStickerPanel">
-          <i class="fas fa-smile-wink"></i>
-        </div>
-
-        <button v-if="inputText.trim()" class="btn-send" style="height:36px; border-radius:18px; padding:0 14px; flex-shrink:0;" @click="handleSendLocal">发送</button>
-        <div v-else class="action-icon-btn" @click="toggleMorePanel" style="border:1px solid #ddd; border-radius:50%; width:36px; height:36px; font-size:16px;">
-          <i class="fas fa-plus"></i>
-        </div>
-      </div>
-
-      <!-- 高级多分组表情包抽屉 -->
-      <div v-if="showStickerPanel" class="sticker-panel-wrapper">
-        <div v-if="stickerGroups.length === 0" style="text-align:center; color:#888; font-size:12px; margin-top:50px;">
-          暂无全局表情包。<br>请在外观或设置的全局管理中添加。
-        </div>
-        <template v-else>
-          <div class="sticker-content">
-            <div class="drawer-item" v-for="(st, idx) in currentStickerGroup.stickers" :key="idx" @click="sendSticker(st.name)">
-              <div class="sticker-item-img" :style="st.url ? `background-image:url(${st.url})` : ''">
-                <i v-if="!st.url" class="fas fa-image" style="color:#ddd; font-size:24px;"></i>
-              </div>
-              <span style="font-size:10px; color:#666; width:100%; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ st.name }}</span>
-            </div>
-          </div>
-          <div class="sticker-tabs">
-            <div 
-              class="sticker-tab" 
-              v-for="g in stickerGroups" 
-              :key="g.id"
-              :class="{ active: activeStickerGroupId === g.id }"
-              @click="activeStickerGroupId = g.id"
-            >
-              {{ g.name }}
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <div v-if="showMorePanel" class="bottom-drawer" style="background:#fff; border-top:none;">
-        <div class="drawer-item" @click="openAlert('image')">
-          <div style="width:50px; height:50px; background:#f4f5f7; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#666;"><i class="fas fa-image"></i></div><span style="font-size:11px; color:#888;">图片</span>
-        </div>
-        <div class="drawer-item" @click="openAlert('voice')">
-          <div style="width:50px; height:50px; background:#f4f5f7; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#666;"><i class="fas fa-microphone"></i></div><span style="font-size:11px; color:#888;">语音</span>
-        </div>
-        <div class="drawer-item" @click="openAlert('transfer')">
-          <div style="width:50px; height:50px; background:#f4f5f7; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#666;"><i class="fas fa-exchange-alt"></i></div><span style="font-size:11px; color:#888;">转账</span>
-        </div>
-        <div class="drawer-item" @click="openAlert('location')">
-          <div style="width:50px; height:50px; background:#f4f5f7; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#666;"><i class="fas fa-map-marker-alt"></i></div><span style="font-size:11px; color:#888;">位置</span>
-        </div>
-        <div class="drawer-item" @click="showMemoryPanel = true; showMorePanel = false">
-          <div style="width:50px; height:50px; background:#f4f5f7; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#666;"><i class="fas fa-book"></i></div><span style="font-size:11px; color:#888;">查看记忆</span>
-        </div>
-        <div class="drawer-item" @click="showSummaryPanel = true; showMorePanel = false">
-          <div style="width:50px; height:50px; background:#eef2ff; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#5c8aff;"><i class="fas fa-magic"></i></div><span style="font-size:11px; color:#5c8aff; font-weight:600;">聊天总结</span>
-        </div>
-        <div class="drawer-item" @click="handleReRoll">
-          <div style="width:50px; height:50px; background:#fff3f3; border-radius:14px; display:flex; justify-content:center; align-items:center; font-size:20px; color:#ff5252;"><i class="fas fa-dice"></i></div><span style="font-size:11px; color:#ff5252; font-weight:600;">重摇回复</span>
+        <div class="msg-avatar" :style="getAiAvatarStyle()">{{ getAiAvatarInitials() }}</div>
+        <div class="msg-content-wrapper">
+          <div class="msg-bubble"><i class="fas fa-circle-notch fa-spin"></i></div>
         </div>
       </div>
     </div>
 
-    <!-- 弹窗/抽屉组件全挂载 -->
-    <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
-    <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
-    <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
-    <SummaryPanel :show="showSummaryPanel" :chat="chat" @close="showSummaryPanel = false" />
+    <ChatBottomBar 
+      :chat="chat"
+      :musicState="musicState"
+      :isSelectionMode="isSelectionMode"
+      :quotingText="quotingText"
+      @send-text="handleSendText"
+      @send-sticker="sendSticker"
+      @trigger-ai="triggerAiReply"
+      @delete-selected="deleteSelected"
+      @open-alert="openMenuAlert"
+      @open-local-music="showLocalMusicPicker = true"
+      @open-memory="showMemoryPanel = true"
+      @open-summary="showSummaryPanel = true"
+      @reroll="handleReRoll"
+      @toggle-colisten="toggleColistenFromMenu"
+      @clear-quote="quotingText = ''"
+    />
 
-    <!-- Action Sheet -->
-    <div class="ios-action-sheet-mask" v-if="actionSheet.show" @click.self="actionSheet.show = false">
-      <div class="ios-action-sheet">
-        <div class="ios-action-group">
-          <div class="ios-action-btn" @click="handleQuote">引用</div>
-          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user'" @click="handleEditOwnMsg">编辑</div>
-          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user' && actionSheet.msg.type !== 'recalled'" @click="handleRecallOwn">撤回</div>
-          <div class="ios-action-btn danger" @click="isSelectionMode = true; actionSheet.show = false">多选</div>
+    <!-- 原汁原味的音乐解析弹窗 (彻底修复) -->
+    <div class="ios-alert-mask" v-if="activeMusicCard" @click.self="activeMusicCard = null">
+      <div class="music-action-popup">
+        <div class="music-action-cover" :style="resolvedMusicData ? `background-image:url(${resolvedMusicData.cover})` : ''">
+          <i v-if="resolvingMusic" class="fas fa-spinner fa-spin" style="font-size:30px; color:#fff;"></i>
         </div>
-        <div class="ios-action-cancel" @click="actionSheet.show = false">取消</div>
+        <div class="music-action-info" style="margin-bottom: 20px;">
+          <div style="font-size:18px; font-weight:700; color:#333;">{{ activeMusicCard.name }}</div>
+          <div style="font-size:12px; color:#888;">{{ activeMusicCard.artist }}</div>
+        </div>
+        <div class="music-action-btns">
+          <button class="m-btn m-play" @click="playResolvedMusic" :disabled="!resolvedMusicData">
+            <i class="fas fa-play"></i> 立即播放
+          </button>
+          <button class="m-btn m-add" @click="addResolvedMusicToQueue" :disabled="!resolvedMusicData">
+            <i class="fas fa-plus"></i> 加入歌单
+          </button>
+        </div>
+        <div class="music-action-cancel" @click="activeMusicCard = null">取消</div>
       </div>
     </div>
 
-    <!-- 通用操作弹窗 -->
+    <!-- 原汁原味的本地音乐拾取器 -->
+    <div class="ios-alert-mask" v-if="showLocalMusicPicker" @click.self="showLocalMusicPicker = false">
+      <div class="ios-alert" style="width: 300px; padding: 0;">
+        <div class="ios-alert-title" style="padding: 15px;">从播放列表选取分享</div>
+        <div style="max-height: 250px; overflow-y: auto; text-align: left; padding: 0 15px 15px;">
+           <div v-if="musicState.playlist.length === 0" style="color:#888; font-size:12px; text-align:center; padding: 20px 0;">
+             暂无歌曲，请先去音乐App搜索
+           </div>
+           <div v-for="(song, idx) in musicState.playlist" :key="idx" class="local-music-item" @click="sendMusicShare(song)">
+             <div class="l-name">{{ song.name }}</div>
+             <div class="l-artist">{{ song.artist }}</div>
+           </div>
+        </div>
+        <div class="ios-alert-actions">
+          <div class="ios-alert-btn" @click="showLocalMusicPicker = false">取消</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 原汁原味的一起听弹窗 -->
+    <div class="ios-alert-mask" v-if="showColistenAlert" @click.self="showColistenAlert = false">
+      <div class="ios-alert">
+        <div class="ios-alert-title"><i class="fas fa-headphones" style="color:#5c8aff;"></i> 一起听邀请</div>
+        <div class="ios-alert-desc" style="margin-top:10px;">{{ chat.title }} 邀请你进入“一起听”状态，是否接受？</div>
+        <div class="ios-alert-actions">
+          <div class="ios-alert-btn danger" @click="replyColisten(false)">直接拒绝</div>
+          <div class="ios-alert-btn bold" @click="replyColisten(true)">接受同频</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 抛弃历史记录的 API 报错查看器 -->
+    <div class="ios-alert-mask" v-if="!!apiErrorDetails" @click.self="apiErrorDetails = null">
+      <div class="ios-alert">
+        <div class="ios-alert-title" style="color:#ff5252; padding-top:20px;">
+          <i class="fas fa-bug"></i> AI 核心过载
+        </div>
+        <div class="ios-alert-desc">大模型接口抛出了异常，回复中断。</div>
+        <div style="padding: 0 15px 15px;">
+          <textarea readonly class="error-textarea">{{ apiErrorDetails }}</textarea>
+        </div>
+        <div class="ios-alert-actions">
+          <div class="ios-alert-btn" @click="copyErrorJson">复制信息</div>
+          <div class="ios-alert-btn bold" @click="apiErrorDetails = null">关闭</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 完美恢复转账逻辑的通用弹窗 -->
     <div class="ios-alert-mask" v-if="alert.show" @click.self="alert.show = false">
       <div class="ios-alert">
         <i v-if="alert.type === 'receive_transfer'" class="fas fa-exchange-alt transfer-icon-large"></i>
@@ -229,11 +161,30 @@
           </template>
           <template v-else>
             <div class="ios-alert-btn" @click="alert.show = false">取消</div>
-            <div class="ios-alert-btn bold" @click="handleAlertConfirm">仅发送不触发回复</div>
+            <div class="ios-alert-btn bold" @click="handleAlertConfirm">确认发送</div>
           </template>
         </div>
       </div>
     </div>
+
+    <!-- Action Sheet 保持原有设计 -->
+    <div class="ios-action-sheet-mask" v-if="actionSheet.show" @click.self="actionSheet.show = false">
+      <div class="ios-action-sheet">
+        <div class="ios-action-group">
+          <div class="ios-action-btn" @click="handleQuote">引用</div>
+          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user'" @click="handleEditOwnMsg">编辑</div>
+          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user' && actionSheet.msg.type !== 'recalled'" @click="handleRecallOwn">撤回</div>
+          <div class="ios-action-btn danger" @click="isSelectionMode = true; actionSheet.show = false">多选</div>
+        </div>
+        <div class="ios-action-cancel" @click="actionSheet.show = false">取消</div>
+      </div>
+    </div>
+
+    <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
+    <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
+    <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
+    <SummaryPanel :show="showSummaryPanel" :chat="chat" @close="showSummaryPanel = false" />
+
   </div>
 </template>
 
@@ -244,8 +195,12 @@ import { usePromptOrder } from '@/composables/usePromptOrder'
 import { useChatSessions } from '@/composables/useChatSessions'
 import { useProfile } from '@/composables/useProfile'
 import { useCharacters } from '@/composables/useCharacters'
-import { usePersona } from '@/composables/usePersona'
-import { useStickers } from '@/composables/useStickers'
+import { useMusic } from '@/composables/useMusic' 
+import { useMusicApi } from '@/composables/useMusicApi'
+
+// 注意：这里已经彻底去掉了 IosAlert 的引用！
+import ChatMessageItem from './components/ChatMessageItem.vue'
+import ChatBottomBar from './components/ChatBottomBar.vue'
 
 import MemoryPanel from './MemoryPanel.vue'
 import ChatSettingsPage from './ChatSettingsPage.vue'
@@ -260,161 +215,172 @@ const { buildApiMessages } = usePromptOrder()
 const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories } = useChatSessions()
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
-const { personas } = usePersona()
-const { stickerGroups } = useStickers()
+const { musicState, loadSong, toggleCoListen } = useMusic()
+const { resolveBestMatch } = useMusicApi()
 
-const inputText = ref('')
 const isWaiting = ref(false)
 const chatBox = ref(null)
 
-const showMorePanel = ref(false)
-const showStickerPanel = ref(false)
 const showSettings = ref(false)
 const showMemoryPanel = ref(false)
 const showDebugPanel = ref(false)
 const showSummaryPanel = ref(false)
+const showLocalMusicPicker = ref(false)
+const showColistenAlert = ref(false)
+const apiErrorDetails = ref(null)
 
+const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
 
-onMounted(() => { loadSessionData(props.chat.id) })
-watch(() => props.chat.id, (newId) => { loadSessionData(newId) })
+// 加载后强制划到底部
+onMounted(async () => { 
+  await loadSessionData(props.chat.id)
+  scrollToBottom()
+})
+watch(() => props.chat.id, async (newId) => { 
+  await loadSessionData(newId)
+  scrollToBottom()
+})
 
 const visibleMessages = computed(() => {
   const limit = Number(props.chat.settings?.renderMessageCount) || 50
   return activeMessages.value.slice(-limit)
 })
 
-const activeStickerGroupId = ref(null)
-watch(stickerGroups, (newGroups) => {
-  if (newGroups.length > 0 && !newGroups.find(g => g.id === activeStickerGroupId.value)) {
-    activeStickerGroupId.value = newGroups[0].id
-  }
-}, { immediate: true, deep: true })
-
-const currentStickerGroup = computed(() => {
-  return stickerGroups.value.find(g => g.id === activeStickerGroupId.value) || { stickers: [] }
+const scrollToBottom = () => nextTick(() => { 
+  if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight 
 })
-
-const getStickerUrl = (name) => {
-  for (const g of stickerGroups.value) {
-    const st = g.stickers.find(s => s.name === name)
-    if (st) return st.url
-  }
-  return null
-}
-
-const checkShowTime = (index) => {
-  if (index === 0) return true
-  const currMsg = visibleMessages.value[index]
-  const prevMsg = visibleMessages.value[index - 1]
-  const currTs = currMsg.timestamp || Math.floor(currMsg.id)
-  const prevTs = prevMsg.timestamp || Math.floor(prevMsg.id)
-  return (currTs - prevTs) > 5 * 60 * 1000
-}
-
-const formatMsgTime = (msg) => {
-  const ts = msg.timestamp || Math.floor(msg.id)
-  const d = new Date(ts)
-  const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  const hours = d.getHours().toString().padStart(2, '0')
-  const mins = d.getMinutes().toString().padStart(2, '0')
-  if (isToday) return `${hours}:${mins}`
-  return `${d.getMonth() + 1}-${d.getDate()} ${hours}:${mins}`
-}
-
-const getActiveUserPersona = () => {
-  if (props.chat.boundPersonaId) return personas.value.find(p => p.id === props.chat.boundPersonaId) || null
-  return personas.value.find(p => p.isActive) || null
-}
-
-const getAvatarStyle = (r) => {
-  if (r === 'user') {
-    const p = getActiveUserPersona()
-    if (p && p.avatar) return `background-image: url(${p.avatar})`
-    if (userProfile.value.avatar) return `background-image: url(${userProfile.value.avatar})`
-  }
-  if (r === 'ai') {
-    if (props.chat.overrideAvatar) return `background-image: url(${props.chat.overrideAvatar})`
-    if (!props.chat.isGroup && props.chat.participants.length > 0) {
-      const liveChar = getCharById(props.chat.participants[0].id)
-      if (liveChar && liveChar.avatar) return `background-image: url(${liveChar.avatar})`
-    }
-  }
-  return ''
-}
-
-const getAvatarInitials = (r) => {
-  if (r === 'user') {
-    const p = getActiveUserPersona()
-    if (p && p.avatar) return ''
-    if (userProfile.value.avatar) return ''
-    return p ? p.name.charAt(0) : userProfile.value.name.charAt(0)
-  }
-  if (r === 'ai') {
-    if (props.chat.overrideAvatar) return ''
-    if (!props.chat.isGroup && props.chat.participants.length > 0) {
-      const liveChar = getCharById(props.chat.participants[0].id)
-      if (liveChar && liveChar.avatar) return ''
-    }
-    return props.chat.title ? props.chat.title.charAt(0) : 'A'
-  }
-  return ''
-}
-
-const scrollToBottom = () => nextTick(() => { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight })
 watch(() => visibleMessages.value.length, scrollToBottom)
 
-const toggleMorePanel = () => { showMorePanel.value = !showMorePanel.value; showStickerPanel.value = false; scrollToBottom() }
-const toggleStickerPanel = () => { showStickerPanel.value = !showStickerPanel.value; showMorePanel.value = false; scrollToBottom() }
+const getAiAvatarStyle = () => {
+  if (props.chat.overrideAvatar) return `background-image: url(${props.chat.overrideAvatar})`
+  if (!props.chat.isGroup && props.chat.participants.length > 0) {
+    const liveChar = getCharById(props.chat.participants[0].id)
+    if (liveChar && liveChar.avatar) return `background-image: url(${liveChar.avatar})`
+  }
+  return ''
+}
 
-const sendSticker = (name) => {
-  pushMessage(props.chat.id, { role: 'user', type: 'sticker', content: name })
-  showStickerPanel.value = false
+const getAiAvatarInitials = () => {
+  if (props.chat.overrideAvatar || (!props.chat.isGroup && getCharById(props.chat.participants[0]?.id)?.avatar)) return ''
+  return props.chat.title ? props.chat.title.charAt(0) : 'A'
+}
+
+const handleSendText = (txt) => {
+  const msgObj = { role: 'user', type: quotingText.value ? 'quote' : 'text', content: txt }
+  if (quotingText.value) msgObj.refText = quotingText.value
+  pushMessage(props.chat.id, msgObj)
+  quotingText.value = ''
   scrollToBottom()
 }
 
-const quotingText = ref('')
-const handleSendLocal = () => {
-  if (!inputText.value.trim()) return
-  const msgObj = { role: 'user', type: quotingText.value ? 'quote' : 'text', content: inputText.value }
-  if (quotingText.value) msgObj.refText = quotingText.value
-  pushMessage(props.chat.id, msgObj)
-  inputText.value = ''
-  quotingText.value = ''
-  showMorePanel.value = false
+const sendSticker = (name) => { 
+  pushMessage(props.chat.id, { role: 'user', type: 'sticker', content: name })
+  scrollToBottom() 
+}
+
+const sendMusicShare = (song) => {
+  pushMessage(props.chat.id, { role: 'user', type: 'music_share', name: song.name, artist: song.artist, content: '我想和你分享这首歌~' })
+  showLocalMusicPicker.value = false
   scrollToBottom()
+}
+
+// 音乐卡片动作弹窗提取逻辑
+const activeMusicCard = ref(null)
+const resolvingMusic = ref(false)
+const resolvedMusicData = ref(null)
+
+const handleMusicShareClick = async (msg) => {
+  activeMusicCard.value = msg
+  resolvingMusic.value = true
+  resolvedMusicData.value = null
+  try {
+    const res = await resolveBestMatch(msg.name, msg.artist)
+    if (res) resolvedMusicData.value = { ...res, name: msg.name, artist: msg.artist }
+  } catch (e) {
+    console.error(e)
+  } finally { 
+    resolvingMusic.value = false 
+  }
+}
+
+const playResolvedMusic = () => {
+  if (resolvedMusicData.value) {
+    musicState.playlist.splice(musicState.currentIndex + 1, 0, resolvedMusicData.value)
+    musicState.currentIndex++
+    loadSong(resolvedMusicData.value, true)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已开始播放' }))
+  }
+  activeMusicCard.value = null
+}
+
+const addResolvedMusicToQueue = () => {
+  if (resolvedMusicData.value) {
+    musicState.playlist.splice(musicState.currentIndex + 1, 0, resolvedMusicData.value)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已加入播放队列' }))
+  }
+  activeMusicCard.value = null
+}
+
+const toggleColistenFromMenu = () => {
+  toggleCoListen(props.chat.id)
+  pushMessage(props.chat.id, { role: 'system', type: 'text', content: musicState.coListenCharId === props.chat.id ? '你已开启一起听羁绊' : '你断开了羁绊' })
+}
+
+const handleColistenReqClick = () => { 
+  showColistenAlert.value = true 
+}
+
+const replyColisten = (accept) => {
+  if (accept) {
+    toggleCoListen(props.chat.id)
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你接受了一起听邀请，并与对方连接同频]' })
+  } else {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你直接拒绝了对方的一起听邀请]' }) 
+  }
+  showColistenAlert.value = false
 }
 
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
-const startPress = (msg) => { if (!isSelectionMode.value) pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
-const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
+const startPress = (msg) => { 
+  if (!isSelectionMode.value) pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) 
+}
+const clearPress = () => { 
+  if (pressTimer) clearTimeout(pressTimer) 
+}
 
-const handleQuote = () => { quotingText.value = actionSheet.value.msg.content; actionSheet.value.show = false }
+const handleQuote = () => { 
+  quotingText.value = actionSheet.value.msg.content
+  actionSheet.value.show = false 
+}
+
 const handleEditOwnMsg = () => {
   const newText = prompt('编辑消息：', actionSheet.value.msg.content)
   if (newText) updateMessage(props.chat.id, actionSheet.value.msg.id, { content: newText })
   actionSheet.value.show = false
 }
+
 const handleRecallOwn = () => {
   updateMessage(props.chat.id, actionSheet.value.msg.id, { type: 'recalled', oldContent: actionSheet.value.msg.content })
   actionSheet.value.show = false
 }
 
-const viewRecall = (oldContent) => {
-  alert.value = { show: true, type: 'view_recall', title: '撤回的内容', desc: oldContent, inputs: null }
-}
-
 const isSelectionMode = ref(false)
 const selectedIds = ref([])
-const cancelSelection = () => { isSelectionMode.value = false; selectedIds.value = [] }
+
+const cancelSelection = () => { 
+  isSelectionMode.value = false
+  selectedIds.value = [] 
+}
+
 const toggleSelect = (id) => {
   if (!isSelectionMode.value) return
   const idx = selectedIds.value.indexOf(id)
   if (idx > -1) selectedIds.value.splice(idx, 1)
   else selectedIds.value.push(id)
 }
+
 const deleteSelected = () => {
   if (confirm(`确认删除选中的 ${selectedIds.length} 条消息吗？`)) {
     removeMessages(props.chat.id, selectedIds.value)
@@ -422,38 +388,64 @@ const deleteSelected = () => {
   }
 }
 
+const viewRecall = (oldContent) => { 
+  alert.value = { show: true, type: 'view_recall', title: '撤回的内容', desc: oldContent, inputs: null } 
+}
+
+// 恢复原始的名字 `alert` 避免逻辑断层
 const alert = ref({ show: false, type: '', title: '', desc: '', inputs: null })
-const openAlert = (type) => {
-  alert.value.type = type; alert.value.desc = ''
-  if (type === 'transfer') { alert.value.title = '发起转账'; alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }] }
-  else if (type === 'location') { alert.value.title = '发送位置'; alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }] }
-  else if (type === 'voice') { alert.value.title = '发送伪语音'; alert.value.inputs = [{ placeholder: '你想说的话', value: '' }] }
-  else if (type === 'image') { alert.value.title = '发送伪图片'; alert.value.inputs = [{ placeholder: '视觉描述', value: '' }] }
+
+const openMenuAlert = (type) => {
+  alert.value.type = type
+  alert.value.desc = ''
+  if (type === 'transfer') { 
+    alert.value.title = '发起转账'
+    alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }] 
+  } else if (type === 'location') { 
+    alert.value.title = '发送位置'
+    alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }] 
+  } else if (type === 'voice') { 
+    alert.value.title = '发送伪语音'
+    alert.value.inputs = [{ placeholder: '你想说的话', value: '' }] 
+  } else if (type === 'image') { 
+    alert.value.title = '发送伪图片'
+    alert.value.inputs = [{ placeholder: '视觉描述', value: '' }] 
+  }
   alert.value.show = true
-  showMorePanel.value = false
 }
 
 const handleAlertConfirm = () => {
-  if (alert.value.type === 'view_recall') { alert.value.show = false; return }
-  const t = alert.value.type; const vals = alert.value.inputs.map(i => i.value)
-  if (t === 'transfer' && vals[0]) pushMessage(props.chat.id, { role: 'user', type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
-  else if (t === 'location' && vals[0]) pushMessage(props.chat.id, { role: 'user', type: 'location', content: vals[0] })
-  else if (t === 'voice' && vals[0]) pushMessage(props.chat.id, { role: 'user', type: 'voice', content: vals[0], showText: false })
-  else if (t === 'image' && vals[0]) pushMessage(props.chat.id, { role: 'user', type: 'image', content: vals[0] })
-  
-  inputText.value = ''
+  const t = alert.value.type
+  const vals = alert.value.inputs.map(i => i.value)
+  if (t === 'transfer' && vals[0]) {
+    pushMessage(props.chat.id, { role: 'user', type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
+  } else if (t === 'location' && vals[0]) {
+    pushMessage(props.chat.id, { role: 'user', type: 'location', content: vals[0] })
+  } else if (t === 'voice' && vals[0]) {
+    pushMessage(props.chat.id, { role: 'user', type: 'voice', content: vals[0], showText: false })
+  } else if (t === 'image' && vals[0]) {
+    pushMessage(props.chat.id, { role: 'user', type: 'image', content: vals[0] })
+  }
   alert.value.show = false
   scrollToBottom()
 }
 
+// 核心修复：找回原来的被点击转账状态
 let activeTransferMsg = null
 const handleTransferClick = (msg) => {
   if (msg.status !== 'pending' || msg.role === 'user') return
   activeTransferMsg = msg
-  alert.value = { show: true, type: 'receive_transfer', title: `来自 ${props.chat.title} 的转账`, desc: `金额：￥${msg.amount}\n备注：${msg.content || '无'}`, inputs: null }
+  alert.value = { 
+    show: true, 
+    type: 'receive_transfer', 
+    title: `来自 ${props.chat.title} 的转账`, 
+    desc: `金额：￥${msg.amount}\n备注：${msg.content || '无'}`, 
+    inputs: null 
+  }
 }
+
 const confirmReceiveTransfer = (action) => {
-  if (!activeTransferMsg) return
+  if (!activeTransferMsg) return // 完美找回
   updateMessage(props.chat.id, activeTransferMsg.id, { status: action === 'accept' ? 'accepted' : 'rejected' })
   pushMessage(props.chat.id, { role: 'system', type: 'text', content: action === 'accept' ? '你已领取转账' : '你已退回转账' })
   pushMessage(props.chat.id, { role: 'user', type: 'transfer_reply', content: '', action: action })
@@ -462,42 +454,44 @@ const confirmReceiveTransfer = (action) => {
 }
 
 const handleReRoll = () => {
-  showMorePanel.value = false
   let lastAiIdx = -1
-  for (let i = activeMessages.value.length - 1; i >= 0; i--) { if (activeMessages.value[i].role === 'ai') { lastAiIdx = i; break; } }
+  for (let i = activeMessages.value.length - 1; i >= 0; i--) { 
+    if (activeMessages.value[i].role === 'ai') { lastAiIdx = i; break; } 
+  }
   if (lastAiIdx !== -1) {
-    const idsToDelete = activeMessages.value.slice(lastAiIdx).map(m => m.id)
-    removeMessages(props.chat.id, idsToDelete)
+    removeMessages(props.chat.id, activeMessages.value.slice(lastAiIdx).map(m => m.id))
     triggerAiReply()
-  } else window.alert('没有可以重摇的 AI 回复。')
+  } else {
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '没有可重摇的回复' }))
+  }
 }
 
-// 自动总结保留在此处，触发依赖对话
 const checkAndRunAutoSummary = async () => {
-  const count = Number(props.chat.settings.autoSummaryCount) || 0
+  const count = Number(props.chat.settings?.autoSummaryCount) || 0
   if (count <= 0) return
   const aiMsgs = activeMessages.value.filter(m => m.role === 'ai')
   if (aiMsgs.length > 0 && aiMsgs.length % count === 0) {
     try {
-      const p = getActiveUserPersona()
-      const myName = p ? p.name : userProfile.value.name
-      const historyText = activeMessages.value.slice(-count * 2)
-        .filter(m => m.role !== 'system')
-        .map(m => `${m.role === 'ai' ? (props.chat.title || '对方') : myName}: ${m.content}`)
-        .join('\n')
-      const finalPrompt = props.chat.settings.summaryPrompt + `\n\n【近期对话记录】\n${historyText}`
+      const historyText = activeMessages.value.slice(-count * 2).filter(m => m.role !== 'system').map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`).join('\n')
+      const finalPrompt = props.chat.settings.summaryPrompt + `\n\n【近期记录】\n${historyText}`
       const res = await fetch(apiUrl.value, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
         body: JSON.stringify({ model: apiModel.value, messages: [{ role: 'user', content: finalPrompt }] })
       })
       if (res.ok) {
         const data = await res.json()
         await addMemory(props.chat.id, { date: new Date().toLocaleString(), text: data.choices[0].message?.content?.trim() || '' })
-        pushMessage(props.chat.id, { role: 'system', type: 'text', content: '记忆已自动归档' })
+        window.dispatchEvent(new CustomEvent('sys-toast', { detail: '聊天记忆已自动归档' }))
       }
-    } catch (e) { console.error('[Auto Summary Error]', e) }
+    } catch (e) { 
+      console.error('总结失败', e) 
+    }
   }
+}
+
+const copyErrorJson = () => {
+  navigator.clipboard.writeText(apiErrorDetails.value)
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '报错详情已复制' }))
 }
 
 const triggerAiReply = async () => {
@@ -509,8 +503,7 @@ const triggerAiReply = async () => {
     if (!apiKey.value) throw new Error('未设置 API 密钥')
     const apiMessages = buildApiMessages(props.chat, activeMessages.value, activeMemories.value)
     
-    const reqStr = apiMessages.map(m => m.content).join('')
-    apiLog.value.reqTokens = Math.ceil(reqStr.length / 4)
+    apiLog.value.reqTokens = Math.ceil(apiMessages.map(m => m.content).join('').length / 4)
     apiLog.value.req = JSON.parse(JSON.stringify(apiMessages))
     apiLog.value.time = new Date().toLocaleTimeString()
 
@@ -522,13 +515,14 @@ const triggerAiReply = async () => {
 
     if (!response.ok) {
       let errTxt = response.statusText
-      try { const errObj = await response.json(); errTxt = errObj.error?.message || JSON.stringify(errObj) } catch(e){}
-      throw new Error(`HTTP ${response.status}: ${errTxt}`)
+      try { 
+        const errObj = await response.json()
+        errTxt = JSON.stringify(errObj, null, 2) 
+      } catch(e) {}
+      throw new Error(errTxt)
     }
     
     const data = await response.json()
-    if (!data || !data.choices || !data.choices[0]) throw new Error(`API 返回格式异常`)
-
     let rawText = data.choices[0].message?.content || ''
     
     apiLog.value.res = rawText
@@ -547,36 +541,55 @@ const triggerAiReply = async () => {
     rawText = rawText.replace(statusRegex, '').trim()
 
     const msgRegex = /<msg(?:[^>]*)>([\s\S]*?)<\/msg>/gi
-    const fullRegex = /<msg(?:\s+type="([^"]+)")?(?:\s+ref="([^"]+)")?(?:\s+amount="([^"]+)")?(?:\s+action="([^"]+)")?>([\s\S]*?)<\/msg>/i
-
     let hasMsg = false
+
     while ((match = msgRegex.exec(rawText)) !== null) {
       hasMsg = true
-      const parsed = fullRegex.exec(match[0])
-      if (parsed) {
-        const mType = parsed[1] || 'text'; const mRef = parsed[2] || ''; const mAmount = parsed[3] || ''; const mAction = parsed[4] || ''; const mContent = parsed[5].trim()
-        const tempId = Date.now() + Math.random()
+      const attrRegex = /(\w+)="([^"]+)"/g
+      let attrs = {}
+      let attrMatch
+      while ((attrMatch = attrRegex.exec(match[0])) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2]
+      }
+      
+      const mType = attrs.type || 'text'
+      const mRef = attrs.ref || ''
+      const mAmount = attrs.amount || ''
+      const mAction = attrs.action || ''
+      const mName = attrs.name || ''
+      const mArtist = attrs.artist || ''
+      const mContent = match[1].trim()
+      
+      const tempId = Date.now() + Math.random()
 
-        if (mType === 'recall') {
-          pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'recall_pending', content: mContent })
-          setTimeout(() => { updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) }, 1500)
-        } else if (mType === 'transfer') {
-          pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'transfer', amount: mAmount, content: mContent, status: 'pending' })
-        } else if (mType === 'transfer_reply') {
-          pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'text', content: `[已${mAction === 'accept' ? '领取' : '退回'}你的转账]` })
-        } else if (mType === 'voice') {
-          pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'voice', content: mContent, showText: false })
-        } else {
-          pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent })
-        }
+      if (mType === 'recall') {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'recall_pending', content: mContent })
+        setTimeout(() => { updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) }, 1500)
+      } else if (mType === 'transfer') {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'transfer', amount: mAmount, content: mContent, status: 'pending' })
+      } else if (mType === 'transfer_reply') {
+        const pendingMsg = activeMessages.value.slice().reverse().find(m => m.type === 'transfer' && m.status === 'pending')
+        if (pendingMsg) updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+        pushMessage(props.chat.id, { role: 'system', type: 'text', content: mAction === 'accept' ? '对方已领取转账' : '对方已退回转账' })
+      } else if (mType === 'voice') {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'voice', content: mContent, showText: false })
+      } else if (mType === 'music_share' || mType === 'music_cmd') {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, name: mName, artist: mArtist, content: mContent })
+        if (mType === 'music_cmd' && mAction === 'play' && mName) playSpecific({ name: mName, artist: mArtist })
+      } else if (mType === 'music_colisten_req') {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'music_colisten_req', content: mContent })
+      } else {
+        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent })
       }
     }
+    
     if (!hasMsg && rawText.length > 0) pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
-
+    
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已收到回复' }))
     checkAndRunAutoSummary()
 
   } catch (error) {
-    pushMessage(props.chat.id, { role: 'system', content: `请求失败：${error.message}` })
+    apiErrorDetails.value = error.message
   } finally {
     isWaiting.value = false
     scrollToBottom()
@@ -586,7 +599,139 @@ const triggerAiReply = async () => {
 
 <style scoped>
 .chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
-.chat-input-area { background: #fff; display: flex; flex-shrink: 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.02); }
-.chat-input { flex: 1; border: none; background: var(--bg-color); border-radius: 18px; padding: 10px 15px; outline: none; font-size: 14px; }
-.btn-send { background: var(--text-main); color: #fff; border: none; padding: 0 16px; font-weight: 600; cursor: pointer; font-size: 13px; }
+.local-music-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+.local-music-item:active { background: #f9f9f9; }
+.l-name { font-size: 14px; font-weight: 600; color: #333; }
+.l-artist { font-size: 11px; color: #888; margin-top: 2px; }
+
+.music-action-popup {
+  background: #fff;
+  border-radius: 24px;
+  padding: 25px;
+  width: 280px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+}
+.music-action-cover {
+  width: 140px;
+  height: 140px;
+  border-radius: 16px;
+  background: #e0e0e0;
+  margin: 0 auto;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.m-btn {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.m-play { background: #5c8aff; color: #fff; }
+.m-add { background: #f4f5f7; color: #333; }
+.m-btn:disabled { opacity: 0.5; pointer-events: none; }
+.music-action-cancel {
+  margin-top: 15px;
+  font-size: 12px;
+  color: #888;
+  cursor: pointer;
+  padding: 5px;
+}
+
+/* 所有恢复的内联弹窗样式 */
+.ios-alert-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(5px);
+}
+.ios-alert {
+  background: rgba(255,255,255,0.95);
+  width: 280px;
+  border-radius: 18px;
+  text-align: center;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+.ios-alert-title {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 20px 20px 5px;
+  color: #000;
+}
+.ios-alert-desc {
+  font-size: 13px;
+  color: #555;
+  padding: 0 20px 15px;
+}
+.ios-alert-inputs {
+  padding: 0 15px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ios-alert-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  outline: none;
+}
+.ios-alert-actions {
+  display: flex;
+  border-top: 1px solid rgba(0,0,0,0.1);
+}
+.ios-alert-btn {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 16px;
+  color: #007aff;
+  cursor: pointer;
+  border-right: 1px solid rgba(0,0,0,0.1);
+}
+.ios-alert-btn:last-child {
+  border-right: none;
+}
+.ios-alert-btn:active {
+  background: rgba(0,0,0,0.05);
+}
+.ios-alert-btn.bold {
+  font-weight: 600;
+}
+.ios-alert-btn.danger {
+  color: #ff3b30;
+}
+
+.error-textarea {
+  width: 100%;
+  height: 150px;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  color: #ff5252;
+  outline: none;
+  resize: none;
+  font-family: monospace;
+}
 </style>
