@@ -90,10 +90,11 @@
             <div class="cp-content">{{ cp.content }}</div>
           </div>
           <div class="sort-actions">
-            <!-- 新增：单项删除按钮 -->
-            <i class="fas fa-trash" style="color:#ff5252; padding:5px; margin-right:4px;" @click="deleteCustomPrompts([cp.id])"></i>
-            <i class="fas fa-arrow-up" @click="moveCustomItem(item.category, cpi, -1)" v-if="cpi > 0"></i>
-            <i class="fas fa-arrow-down" @click="moveCustomItem(item.category, cpi, 1)" v-if="cpi < getCatItems(item.category).length - 1"></i>
+            <!-- 核心新增：单项编辑按钮 -->
+            <i class="fas fa-edit" style="color:#5c8aff; padding:5px; margin-right:4px; cursor:pointer;" @click="openEditCustom(cp)"></i>
+            <i class="fas fa-trash" style="color:#ff5252; padding:5px; margin-right:4px; cursor:pointer;" @click="deleteCustomPrompts([cp.id])"></i>
+            <i class="fas fa-arrow-up" style="cursor:pointer;" @click="moveCustomItem(item.category, cpi, -1)" v-if="cpi > 0"></i>
+            <i class="fas fa-arrow-down" style="cursor:pointer;" @click="moveCustomItem(item.category, cpi, 1)" v-if="cpi < getCatItems(item.category).length - 1"></i>
           </div>
         </div>
       </template>
@@ -105,19 +106,22 @@
       <div class="preview-token">预计静态 Token 数：约 {{ previewData.tokens }} 个（不含角色设定与聊天记录）</div>
       <div class="preview-box">{{ previewData.text }}</div>
       <div class="modal-actions">
+        <!-- 核心新增：导出配置按钮 -->
+        <button class="btn-cancel" @click="handleExportConfig">导出配置</button>
         <button class="btn-confirm" @click="showPreview = false">关闭</button>
       </div>
     </InnerModal>
 
-    <InnerModal :show="showAddModal" @close="showAddModal = false">
-      <div class="modal-title">添加自定义提示词</div>
+    <!-- 弹窗标题动态化 -->
+    <InnerModal :show="showAddModal" @close="closeAddModal">
+      <div class="modal-title">{{ addForm.id ? '编辑自定义提示词' : '添加自定义提示词' }}</div>
       <input class="modal-input" v-model="addForm.name" placeholder="名称（如：写作风格、输出格式）" />
       <input class="modal-input" v-model="addForm.category" placeholder="分类名相同时自动成组（如：风格控制）" />
       <textarea class="modal-textarea" v-model="addForm.content" placeholder="提示词内容..."></textarea>
       <RoleSelector v-model="addForm.injectRole" />
       <div class="modal-hint">自定义提示词会以分类成组，支持组与组之间、组内独立排序。</div>
       <div class="modal-actions">
-        <button class="btn-cancel" @click="showAddModal = false">取消</button>
+        <button class="btn-cancel" @click="closeAddModal">取消</button>
         <button class="btn-confirm" @click="handleSaveCustom" :disabled="!addForm.name || !addForm.content">保存</button>
       </div>
     </InnerModal>
@@ -156,17 +160,70 @@ const handleDeleteSelected = () => {
   selectedIds.value = []
 }
 
+const openEditCustom = (cp) => {
+  addForm.value = JSON.parse(JSON.stringify(cp))
+  showAddModal.value = true
+}
+
+const openAddModal = () => {
+  addForm.value = { name: '', category: '', content: '', injectRole: 'system' }
+  showAddModal.value = true
+}
+
+const closeAddModal = () => {
+  addForm.value = { name: '', category: '', content: '', injectRole: 'system' }
+  showAddModal.value = false
+}
+
 const handleSaveCustom = () => {
-  if (saveCustomPrompt(addForm.value)) {
-    const cat = addForm.value.category || '自定义'
-    customExpanded.value[cat] = true
-    addForm.value = { name: '', category: '', content: '', injectRole: 'system' }
-    showAddModal.value = false
+  if (addForm.value.id) {
+    // 编辑模式：合并数据
+    const idx = customPrompts.value.findIndex(p => p.id === addForm.value.id)
+    if (idx !== -1) {
+      customPrompts.value[idx] = { ...customPrompts.value[idx], ...addForm.value }
+    }
+    
+    // 检查并维护分组
+    const catName = addForm.value.category || '自定义'
+    const catId = 'cat_group_' + catName
+    if (!promptOrder.value.find(o => o.id === catId)) {
+      promptOrder.value.push({ id: catId, type: 'custom_category', category: catName })
+    }
+    
+    // 清理空分组
+    const activeCats = new Set(customPrompts.value.map(p => p.category))
+    promptOrder.value = promptOrder.value.filter(item => item.type === 'custom_category' ? activeCats.has(item.category) : true)
+
+    customExpanded.value[catName] = true
+    closeAddModal()
+  } else {
+    // 新建模式
+    if (saveCustomPrompt(addForm.value)) {
+      const cat = addForm.value.category || '自定义'
+      customExpanded.value[cat] = true
+      closeAddModal()
+    }
   }
+}
+
+const handleExportConfig = () => {
+  const exportData = {
+    promptOrder: promptOrder.value,
+    customPrompts: customPrompts.value,
+    exportedAt: new Date().toLocaleString()
+  }
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `aero-prompt-config-${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '注入配置已导出' }))
 }
 
 defineExpose({
   openPreview: () => { showPreview.value = true },
-  openAddModal: () => { showAddModal.value = true }
+  openAddModal
 })
 </script>

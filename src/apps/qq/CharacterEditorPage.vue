@@ -14,11 +14,18 @@
             <i v-if="!form.avatar" class="fas fa-camera"></i>
           </div>
           <input type="file" ref="avatarInput" accept="image/*" style="display:none;" @change="onAvatarChange" />
-          <input type="file" ref="jsonInput" accept=".json" style="display:none;" @change="onJsonImport" />
           
-          <button v-if="!form.id" class="btn-cancel" style="position:absolute; right:20px; bottom:15px; padding:6px 12px; font-size:12px; border-radius:20px; background:rgba(255,255,255,0.8); backdrop-filter:blur(5px);" @click="triggerJsonUpload">
-            <i class="fas fa-file-import"></i> 导入 V3 JSON
-          </button>
+          <!-- 核心修改：支持 png 和 json 导入 -->
+          <input type="file" ref="jsonInput" accept=".json,.png" style="display:none;" @change="onFileImport" />
+          
+          <div style="position:absolute; right:20px; bottom:15px; display:flex; gap:10px; z-index: 20;">
+            <button v-if="form.id" class="btn-cancel" style="padding:6px 12px; font-size:12px; border-radius:20px; background:rgba(255,255,255,0.8); backdrop-filter:blur(5px); box-shadow:0 2px 10px rgba(0,0,0,0.1);" @click="exportJson">
+              <i class="fas fa-file-export"></i> 导出卡片
+            </button>
+            <button class="btn-cancel" style="padding:6px 12px; font-size:12px; border-radius:20px; background:rgba(255,255,255,0.8); backdrop-filter:blur(5px); box-shadow:0 2px 10px rgba(0,0,0,0.1);" @click="triggerJsonUpload">
+              <i class="fas fa-file-import"></i> 导入 PNG/JSON
+            </button>
+          </div>
         </div>
 
         <div class="editor-tabs">
@@ -51,7 +58,6 @@
 
         <div class="editor-body" v-if="activeTab === 'advanced'">
           
-          <!-- 总开关 -->
           <div class="ins-input-group" style="flex-direction:row; justify-content:space-between; align-items:center;">
             <div>
               <div class="ins-label" style="color:var(--text-main);">启用高级变量系统</div>
@@ -217,13 +223,49 @@ const onAvatarChange = (e) => {
   reader.readAsDataURL(file)
 }
 
+// 核心功能：提取 PNG 中的 tEXt 数据块
+const extractPngTextChunk = (arrayBuffer) => {
+  const view = new DataView(arrayBuffer)
+  let offset = 8
+  while (offset < view.byteLength) {
+    const length = view.getUint32(offset)
+    const type = String.fromCharCode(
+      view.getUint8(offset + 4),
+      view.getUint8(offset + 5),
+      view.getUint8(offset + 6),
+      view.getUint8(offset + 7)
+    )
+    if (type === 'tEXt') {
+      const dataBytes = new Uint8Array(arrayBuffer, offset + 8, length)
+      const textStr = new TextDecoder('utf-8').decode(dataBytes)
+      const nullIdx = textStr.indexOf('\0')
+      const keyword = textStr.substring(0, nullIdx)
+      
+      // 角色卡的专属关键词
+      if (keyword === 'chara') {
+        const base64Str = textStr.substring(nullIdx + 1)
+        // 解析 Base64，由于涉及中文，需要使用标准的 Unicode 解码方式
+        const binString = atob(base64Str)
+        const bytes = new Uint8Array(binString.length)
+        for (let i = 0; i < binString.length; i++) {
+          bytes[i] = binString.charCodeAt(i)
+        }
+        return new TextDecoder('utf-8').decode(bytes)
+      }
+    }
+    offset += 12 + length
+  }
+  return null
+}
+
 const triggerJsonUpload = () => { jsonInput.value?.click() }
-const onJsonImport = (e) => {
+
+const onFileImport = (e) => {
   const file = e.target.files[0]
   if (!file) return
-  const reader = new FileReader()
-  reader.onload = (ev) => {
-    const result = parseV3Card(ev.target.result)
+
+  const processResult = (jsonString) => {
+    const result = parseV3Card(jsonString)
     if (result) {
       Object.assign(form.value, result.character)
       if (result.worldbooks && result.worldbooks.length > 0) {
@@ -231,10 +273,62 @@ const onJsonImport = (e) => {
         result.worldbooks.forEach(wb => { if (saveWb(wb)) successCount++ })
         alert(`角色数据加载成功！同时导入了 ${successCount} 条世界书记录。`)
       } else alert('角色数据加载成功！')
-    } else alert('解析失败，请确保是标准的 V3 角色卡 JSON。')
+    } else alert('解析失败，不支持的格式。')
     jsonInput.value.value = ''
   }
-  reader.readAsText(file)
+
+  if (file.name.toLowerCase().endsWith('.png')) {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const jsonStr = extractPngTextChunk(ev.target.result)
+        if (jsonStr) processResult(jsonStr)
+        else alert('未在 PNG 中找到角色数据 (缺少 chara 数据块)')
+      } catch(err) { alert('解析 PNG 失败: ' + err.message) }
+    }
+    reader.readAsArrayBuffer(file)
+  } else {
+    const reader = new FileReader()
+    reader.onload = (ev) => { processResult(ev.target.result) }
+    reader.readAsText(file)
+  }
+}
+
+// 核心功能：导出 V3 格式的 Json 角色卡
+const exportJson = () => {
+  const exportData = {
+    spec: "chara_v3",
+    spec_version: "3.0",
+    data: {
+      name: form.value.name,
+      description: form.value.description,
+      personality: form.value.personality,
+      first_mes: form.value.first_mes,
+      alternate_greetings: form.value.alternate_greetings || [],
+      mes_example: form.value.mes_example || "",
+      creator_notes: form.value.creator_notes || "",
+      system_prompt: form.value.system_prompt || "",
+      post_history_instructions: form.value.post_history_instructions || "",
+      tags: form.value.tags || [],
+      creator: form.value.creator || "",
+      character_version: form.value.character_version || "",
+      extensions: {
+        aero_vars: form.value.advancedSettingsEnabled ? {
+          variables: form.value.variables,
+          variablePresets: form.value.variablePresets,
+          statusUpdatePrompt: form.value.statusUpdatePrompt
+        } : undefined,
+        trueName: form.value.trueName
+      }
+    }
+  }
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${form.value.name || 'character'}_v3.json`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 const handleSave = () => {
@@ -242,3 +336,7 @@ const handleSave = () => {
   else alert('请至少填写网络昵称。')
 }
 </script>
+
+<style scoped>
+/* 保持所有样式不变，避免格式压缩 */
+</style>

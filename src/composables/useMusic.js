@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 import { useMusicApi } from './useMusicApi'
-import db from '@/db' // 引入本地数据库
+import db from '@/db'
 
 const audio = new Audio()
 audio.crossOrigin = 'anonymous'
@@ -8,9 +8,13 @@ audio.crossOrigin = 'anonymous'
 // 缓存 Key
 const STORE_KEY = 'AERO_PLAYER_V7'
 const COLISTEN_KEY = 'AERO_COLISTEN_CHAR_ID'
+const LYRIC_CSS_KEY = 'AERO_LYRIC_CSS'
+const LYRIC_PRESETS_KEY = 'AERO_LYRIC_PRESETS'
 
 const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}')
 const savedCoListen = localStorage.getItem(COLISTEN_KEY) || null
+const savedLyricCss = localStorage.getItem(LYRIC_CSS_KEY) || ''
+const savedLyricPresets = JSON.parse(localStorage.getItem(LYRIC_PRESETS_KEY) || '[]')
 
 // 全局响应式状态机
 const musicState = reactive({
@@ -33,7 +37,11 @@ const musicState = reactive({
   islandSubtitle: 'AERO OS Ready',
 
   // 核心：一起听状态（绑定的角色 ID，null 表示独立听歌）
-  coListenCharId: savedCoListen !== 'null' ? savedCoListen : null
+  coListenCharId: savedCoListen !== 'null' ? savedCoListen : null,
+
+  // 核心新增：歌词卡片美化数据
+  customLyricCss: savedLyricCss,
+  lyricCssPresets: savedLyricPresets
 })
 
 // 单例模式，防止重复绑定监听器
@@ -63,14 +71,20 @@ export function useMusic() {
     })
 
     // 2. 绑定播放状态事件
-    audio.addEventListener('play', () => { musicState.isPlaying = true })
+    audio.addEventListener('play', () => { 
+      musicState.isPlaying = true 
+    })
+    
     audio.addEventListener('pause', () => { 
       musicState.isPlaying = false
       if (musicState.playlist[musicState.currentIndex]) {
         musicState.islandSubtitle = musicState.playlist[musicState.currentIndex].artist;
       }
     })
-    audio.addEventListener('ended', () => { playNext(true) })
+    
+    audio.addEventListener('ended', () => { 
+      playNext(true) 
+    })
 
     // 3. 监听状态并缓存到 LocalStorage
     watch(() => [musicState.playlist, musicState.currentIndex, musicState.playMode], () => {
@@ -84,6 +98,15 @@ export function useMusic() {
     watch(() => musicState.coListenCharId, (newId) => {
       localStorage.setItem(COLISTEN_KEY, newId || 'null')
     })
+    
+    // 核心新增：持久化 CSS 预设
+    watch(() => musicState.customLyricCss, (v) => {
+      localStorage.setItem(LYRIC_CSS_KEY, v)
+    })
+    
+    watch(() => musicState.lyricCssPresets, (v) => {
+      localStorage.setItem(LYRIC_PRESETS_KEY, JSON.stringify(v))
+    }, { deep: true })
 
     // 4. 听歌时长统计打点系统 (每秒检测，满10秒写一次 DB)
     setInterval(() => {
@@ -101,7 +124,7 @@ export function useMusic() {
 
   // --- 内部方法：写入数据库 ---
   const flushStatsToDB = async (secs) => {
-    if (!db.musicStats) return // 防御性判断：如果 db 还没建好表，则跳过
+    if (!db.musicStats) return 
     try {
       let stats = await db.musicStats.get('global')
       if (!stats) {
@@ -110,7 +133,6 @@ export function useMusic() {
       
       const todayKey = new Date().toDateString()
 
-      // 分离记录：“独立听歌” vs “与某角色一起听”
       if (musicState.coListenCharId) {
         if (!stats.coListenTime[musicState.coListenCharId]) {
           stats.coListenTime[musicState.coListenCharId] = 0
@@ -120,8 +142,9 @@ export function useMusic() {
         stats.totalSoloTime += secs
       }
 
-      // 记录每日趋势
-      if (!stats.dailyTrends[todayKey]) stats.dailyTrends[todayKey] = 0
+      if (!stats.dailyTrends[todayKey]) {
+        stats.dailyTrends[todayKey] = 0
+      }
       stats.dailyTrends[todayKey] += secs
 
       await db.musicStats.put(stats)
@@ -137,7 +160,10 @@ export function useMusic() {
     text.split('\n').forEach(line => {
       const m = line.trim().match(re);
       if (m && m[4]) {
-        lines.push({ t: parseInt(m[1]) * 60 + parseInt(m[2]) + (m[3] ? parseFloat('0' + m[3]) : 0), txt: m[4] });
+        lines.push({ 
+          t: parseInt(m[1]) * 60 + parseInt(m[2]) + (m[3] ? parseFloat('0' + m[3]) : 0), 
+          txt: m[4] 
+        });
       }
     });
     return lines;
@@ -164,7 +190,9 @@ export function useMusic() {
       }
       audio.src = resolved.url;
       if (autoPlay) {
-        audio.play().catch(() => { musicState.isPlaying = false; });
+        audio.play().catch(() => { 
+          musicState.isPlaying = false; 
+        });
       }
       const lrcText = await fetchLyrics(resolved.lrc_id, resolved.lrc_src, item.name, item.artist);
       if (lrcText) {
@@ -180,8 +208,11 @@ export function useMusic() {
 
   const togglePlay = () => {
     if (!audio.src) return;
-    if (audio.paused) audio.play();
-    else audio.pause();
+    if (audio.paused) {
+      audio.play();
+    } else {
+      audio.pause();
+    }
   }
 
   const playNext = async (isAuto = false) => {
@@ -206,6 +237,7 @@ export function useMusic() {
   const playPrev = async () => {
     if (!musicState.playlist.length) return;
     const len = musicState.playlist.length;
+    
     if (musicState.playMode === 2) {
       musicState.currentIndex = Math.floor(Math.random() * len);
     } else {
@@ -214,13 +246,11 @@ export function useMusic() {
     await loadSong(musicState.playlist[musicState.currentIndex]);
   }
 
-  // --- AI 或 用户 主动点歌指令 ---
   const playSpecific = async (songObj) => {
     const idx = musicState.playlist.findIndex(t => t.name === songObj.name && t.artist === songObj.artist);
     if (idx !== -1) {
       musicState.currentIndex = idx;
     } else {
-      // 插入到当前播放的下一首并立即播放
       musicState.playlist.splice(musicState.currentIndex + 1, 0, songObj);
       musicState.currentIndex++;
     }
@@ -228,15 +258,16 @@ export function useMusic() {
   }
 
   const seek = (time) => {
-    if (audio.duration) audio.currentTime = time;
+    if (audio.duration) {
+      audio.currentTime = time;
+    }
   }
 
-  // --- 一起听开关 ---
   const toggleCoListen = (charId) => {
     if (musicState.coListenCharId === charId) {
-      musicState.coListenCharId = null // 关闭当前一起听
+      musicState.coListenCharId = null 
     } else {
-      musicState.coListenCharId = charId // 开启或切换为新角色的一起听
+      musicState.coListenCharId = charId 
     }
   }
 
@@ -252,3 +283,4 @@ export function useMusic() {
     toggleCoListen
   }
 }
+

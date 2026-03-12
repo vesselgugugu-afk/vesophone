@@ -142,7 +142,48 @@ export function usePromptOrder() {
     return `[${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}]`
   }
 
-  const previewData = computed(() => { return { text: '预览已折叠', tokens: 0 } })
+const previewData = computed(() => {
+  let text = ''
+  let staticTokenStr = ''
+  promptOrder.value.forEach((item) => {
+    if (item.key === 'functional') {
+      const fp = getOnlineChatProtocol([])
+      text += `[线上聊天协议指导]\n${fp}\n\n`
+      staticTokenStr += fp
+    } else if (item.type === 'custom_category') {
+      const catItems = customPrompts.value.filter(p => p.category === item.category)
+      if (catItems.length > 0) {
+        text += `[组 · ${item.category}]\n`
+        catItems.forEach(cp => {
+          text += `  · ${cp.name}: ${cp.content}\n`
+          staticTokenStr += cp.content
+        })
+        text += '\n'
+      }
+    } else if (item.key === 'global_worldbook') {
+      if (enabledWorldbooks.value.length > 0) {
+        text += `[全局世界书]\n`
+        enabledWorldbooks.value.forEach((wb) => {
+          text += `  · ${wb.title}: ${wb.content}\n`
+          staticTokenStr += wb.content
+        })
+        text += '\n'
+      }
+    } else if (item.key === 'local_worldbook') {
+      text += `[局部世界书] (因聊天绑定动态生效)\n\n`
+    } else if (item.key === 'persona') {
+      text += `[我的人设] (全局或聊天专属覆盖)\n\n`
+    } else if (item.key === 'character') {
+      text += `[角色设定] (动态条件注入)\n\n`
+    } else if (item.key === 'memory') {
+      text += `[长期记忆库] (动态提取)\n\n`
+    } else if (item.key === 'chat_history') {
+      text += `[聊天记录] (动态切片)\n\n`
+    }
+  })
+  return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
+})
+
 
   const buildApiMessages = (currentChat, activeMessages, activeMemories) => {
     const apiMessages = []

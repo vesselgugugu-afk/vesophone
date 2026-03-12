@@ -1,14 +1,17 @@
 <template>
   <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; position:relative;">
     
+    <!-- 注入聊天专属 CSS 和 全局歌词卡片 CSS -->
     <component :is="'style'" v-if="chat.customCss">{{ chat.customCss }}</component>
+    <component :is="'style'" v-if="musicState.customLyricCss">{{ musicState.customLyricCss }}</component>
 
-    <!-- 顶部导航栏增加了避让灵动岛的间距 -->
     <div class="app-header" style="padding-top: env(safe-area-inset-top, 40px); min-height: calc(env(safe-area-inset-top, 40px) + 50px);">
       <div class="btn-back" @click="$emit('exit')" v-if="!isSelectionMode">
         <i class="fas fa-chevron-left"></i>
       </div>
-      <div class="btn-back" @click="cancelSelection" v-else>取消</div>
+      <div class="btn-back" @click="cancelSelection" v-else>
+        取消
+      </div>
       
       <div class="app-title">{{ isSelectionMode ? `已选择 ${selectedIds.length} 项` : chat.title }}</div>
       
@@ -18,7 +21,6 @@
       </div>
     </div>
 
-    <!-- 动态聊天区 -->
     <div class="chat-area" ref="chatBox" :style="chat.bgImage ? { backgroundImage: `url(${chat.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
       <div v-if="chat.bgImage" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.2); pointer-events:none; z-index:0;"></div>
 
@@ -40,11 +42,12 @@
         />
       </template>
 
-      <!-- 等待气泡 -->
       <div v-if="isWaiting" class="msg-row is-ai" style="position:relative; z-index:1; width:100%;">
         <div class="msg-avatar" :style="getAiAvatarStyle()">{{ getAiAvatarInitials() }}</div>
         <div class="msg-content-wrapper">
-          <div class="msg-bubble"><i class="fas fa-circle-notch fa-spin"></i></div>
+          <div class="msg-bubble">
+            <i class="fas fa-circle-notch fa-spin"></i>
+          </div>
         </div>
       </div>
     </div>
@@ -67,7 +70,7 @@
       @clear-quote="quotingText = ''"
     />
 
-    <!-- 原汁原味的音乐解析弹窗 (彻底修复) -->
+    <!-- 修复防挤压的音乐推荐卡片弹窗 -->
     <div class="ios-alert-mask" v-if="activeMusicCard" @click.self="activeMusicCard = null">
       <div class="music-action-popup">
         <div class="music-action-cover" :style="resolvedMusicData ? `background-image:url(${resolvedMusicData.cover})` : ''">
@@ -89,7 +92,7 @@
       </div>
     </div>
 
-    <!-- 原汁原味的本地音乐拾取器 -->
+    <!-- 本地音乐拾取器 -->
     <div class="ios-alert-mask" v-if="showLocalMusicPicker" @click.self="showLocalMusicPicker = false">
       <div class="ios-alert" style="width: 300px; padding: 0;">
         <div class="ios-alert-title" style="padding: 15px;">从播放列表选取分享</div>
@@ -108,11 +111,15 @@
       </div>
     </div>
 
-    <!-- 原汁原味的一起听弹窗 -->
+    <!-- 一起听邀请弹窗 -->
     <div class="ios-alert-mask" v-if="showColistenAlert" @click.self="showColistenAlert = false">
       <div class="ios-alert">
-        <div class="ios-alert-title"><i class="fas fa-headphones" style="color:#5c8aff;"></i> 一起听邀请</div>
-        <div class="ios-alert-desc" style="margin-top:10px;">{{ chat.title }} 邀请你进入“一起听”状态，是否接受？</div>
+        <div class="ios-alert-title">
+          <i class="fas fa-headphones" style="color:#5c8aff;"></i> 一起听邀请
+        </div>
+        <div class="ios-alert-desc" style="margin-top:10px;">
+          {{ chat.title }} 邀请你进入“一起听”状态，是否接受？
+        </div>
         <div class="ios-alert-actions">
           <div class="ios-alert-btn danger" @click="replyColisten(false)">直接拒绝</div>
           <div class="ios-alert-btn bold" @click="replyColisten(true)">接受同频</div>
@@ -120,7 +127,7 @@
       </div>
     </div>
 
-    <!-- 抛弃历史记录的 API 报错查看器 -->
+    <!-- AI 报错弹窗 -->
     <div class="ios-alert-mask" v-if="!!apiErrorDetails" @click.self="apiErrorDetails = null">
       <div class="ios-alert">
         <div class="ios-alert-title" style="color:#ff5252; padding-top:20px;">
@@ -137,7 +144,7 @@
       </div>
     </div>
 
-    <!-- 完美恢复转账逻辑的通用弹窗 -->
+    <!-- 交互提示弹窗 (转账等) -->
     <div class="ios-alert-mask" v-if="alert.show" @click.self="alert.show = false">
       <div class="ios-alert">
         <i v-if="alert.type === 'receive_transfer'" class="fas fa-exchange-alt transfer-icon-large"></i>
@@ -145,7 +152,7 @@
         
         <div class="ios-alert-desc" v-if="alert.type === 'view_recall'">{{ alert.desc }}</div>
         <div class="ios-alert-desc" v-else-if="alert.desc" style="white-space: pre-wrap; font-size: 14px;">{{ alert.desc }}</div>
-
+        
         <div class="ios-alert-inputs" v-if="alert.inputs">
           <input v-for="(inp, i) in alert.inputs" :key="i" class="ios-alert-input" v-model="inp.value" :placeholder="inp.placeholder" :type="inp.type || 'text'" />
         </div>
@@ -167,7 +174,7 @@
       </div>
     </div>
 
-    <!-- Action Sheet 保持原有设计 -->
+    <!-- Action Sheet 底部菜单 -->
     <div class="ios-action-sheet-mask" v-if="actionSheet.show" @click.self="actionSheet.show = false">
       <div class="ios-action-sheet">
         <div class="ios-action-group">
@@ -180,6 +187,7 @@
       </div>
     </div>
 
+    <!-- 功能面板 -->
     <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
     <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
     <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
@@ -198,7 +206,6 @@ import { useCharacters } from '@/composables/useCharacters'
 import { useMusic } from '@/composables/useMusic' 
 import { useMusicApi } from '@/composables/useMusicApi'
 
-// 注意：这里已经彻底去掉了 IosAlert 的引用！
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import ChatBottomBar from './components/ChatBottomBar.vue'
 
@@ -207,7 +214,10 @@ import ChatSettingsPage from './ChatSettingsPage.vue'
 import DebugPanel from './DebugPanel.vue'
 import SummaryPanel from './SummaryPanel.vue'
 
-const props = defineProps({ chat: { type: Object, required: true } })
+const props = defineProps({ 
+  chat: { type: Object, required: true } 
+})
+
 const emit = defineEmits(['exit', 'edit-character'])
 
 const { apiUrl, apiKey, apiModel } = useApi()
@@ -215,7 +225,7 @@ const { buildApiMessages } = usePromptOrder()
 const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories } = useChatSessions()
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
-const { musicState, loadSong, toggleCoListen } = useMusic()
+const { musicState, loadSong, toggleCoListen, playSpecific } = useMusic()
 const { resolveBestMatch } = useMusicApi()
 
 const isWaiting = ref(false)
@@ -232,43 +242,58 @@ const apiErrorDetails = ref(null)
 const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
 
-// 加载后强制划到底部
 onMounted(async () => { 
   await loadSessionData(props.chat.id)
   scrollToBottom()
 })
+
 watch(() => props.chat.id, async (newId) => { 
   await loadSessionData(newId)
   scrollToBottom()
 })
 
-const visibleMessages = computed(() => {
+const visibleMessages = computed(() => { 
   const limit = Number(props.chat.settings?.renderMessageCount) || 50
-  return activeMessages.value.slice(-limit)
+  return activeMessages.value.slice(-limit) 
 })
 
-const scrollToBottom = () => nextTick(() => { 
-  if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight 
-})
+const scrollToBottom = () => {
+  nextTick(() => { 
+    if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight 
+  })
+}
+
 watch(() => visibleMessages.value.length, scrollToBottom)
 
 const getAiAvatarStyle = () => {
-  if (props.chat.overrideAvatar) return `background-image: url(${props.chat.overrideAvatar})`
+  if (props.chat.overrideAvatar) {
+    return `background-image: url(${props.chat.overrideAvatar})`
+  }
   if (!props.chat.isGroup && props.chat.participants.length > 0) {
     const liveChar = getCharById(props.chat.participants[0].id)
-    if (liveChar && liveChar.avatar) return `background-image: url(${liveChar.avatar})`
+    if (liveChar && liveChar.avatar) {
+      return `background-image: url(${liveChar.avatar})`
+    }
   }
   return ''
 }
 
 const getAiAvatarInitials = () => {
-  if (props.chat.overrideAvatar || (!props.chat.isGroup && getCharById(props.chat.participants[0]?.id)?.avatar)) return ''
+  if (props.chat.overrideAvatar || (!props.chat.isGroup && getCharById(props.chat.participants[0]?.id)?.avatar)) {
+    return ''
+  }
   return props.chat.title ? props.chat.title.charAt(0) : 'A'
 }
 
 const handleSendText = (txt) => {
-  const msgObj = { role: 'user', type: quotingText.value ? 'quote' : 'text', content: txt }
-  if (quotingText.value) msgObj.refText = quotingText.value
+  const msgObj = { 
+    role: 'user', 
+    type: quotingText.value ? 'quote' : 'text', 
+    content: txt 
+  }
+  if (quotingText.value) {
+    msgObj.refText = quotingText.value
+  }
   pushMessage(props.chat.id, msgObj)
   quotingText.value = ''
   scrollToBottom()
@@ -279,13 +304,18 @@ const sendSticker = (name) => {
   scrollToBottom() 
 }
 
-const sendMusicShare = (song) => {
-  pushMessage(props.chat.id, { role: 'user', type: 'music_share', name: song.name, artist: song.artist, content: '我想和你分享这首歌~' })
+const sendMusicShare = (song) => { 
+  pushMessage(props.chat.id, { 
+    role: 'user', 
+    type: 'music_share', 
+    name: song.name, 
+    artist: song.artist, 
+    content: '我想和你分享这首歌~' 
+  })
   showLocalMusicPicker.value = false
-  scrollToBottom()
+  scrollToBottom() 
 }
 
-// 音乐卡片动作弹窗提取逻辑
 const activeMusicCard = ref(null)
 const resolvingMusic = ref(false)
 const resolvedMusicData = ref(null)
@@ -294,11 +324,13 @@ const handleMusicShareClick = async (msg) => {
   activeMusicCard.value = msg
   resolvingMusic.value = true
   resolvedMusicData.value = null
-  try {
+  try { 
     const res = await resolveBestMatch(msg.name, msg.artist)
-    if (res) resolvedMusicData.value = { ...res, name: msg.name, artist: msg.artist }
-  } catch (e) {
-    console.error(e)
+    if (res) {
+      resolvedMusicData.value = { ...res, name: msg.name, artist: msg.artist } 
+    }
+  } catch (e) { 
+    console.error(e) 
   } finally { 
     resolvingMusic.value = false 
   }
@@ -322,9 +354,13 @@ const addResolvedMusicToQueue = () => {
   activeMusicCard.value = null
 }
 
-const toggleColistenFromMenu = () => {
+const toggleColistenFromMenu = () => { 
   toggleCoListen(props.chat.id)
-  pushMessage(props.chat.id, { role: 'system', type: 'text', content: musicState.coListenCharId === props.chat.id ? '你已开启一起听羁绊' : '你断开了羁绊' })
+  pushMessage(props.chat.id, { 
+    role: 'system', 
+    type: 'text', 
+    content: musicState.coListenCharId === props.chat.id ? '你已开启一起听羁绊' : '你断开了羁绊' 
+  }) 
 }
 
 const handleColistenReqClick = () => { 
@@ -332,10 +368,10 @@ const handleColistenReqClick = () => {
 }
 
 const replyColisten = (accept) => {
-  if (accept) {
+  if (accept) { 
     toggleCoListen(props.chat.id)
-    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你接受了一起听邀请，并与对方连接同频]' })
-  } else {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你接受了一起听邀请，并与对方连接同频]' }) 
+  } else { 
     pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你直接拒绝了对方的一起听邀请]' }) 
   }
   showColistenAlert.value = false
@@ -343,9 +379,15 @@ const replyColisten = (accept) => {
 
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
+
 const startPress = (msg) => { 
-  if (!isSelectionMode.value) pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) 
+  if (!isSelectionMode.value) {
+    pressTimer = setTimeout(() => { 
+      actionSheet.value = { show: true, msg } 
+    }, 500) 
+  }
 }
+
 const clearPress = () => { 
   if (pressTimer) clearTimeout(pressTimer) 
 }
@@ -355,15 +397,20 @@ const handleQuote = () => {
   actionSheet.value.show = false 
 }
 
-const handleEditOwnMsg = () => {
+const handleEditOwnMsg = () => { 
   const newText = prompt('编辑消息：', actionSheet.value.msg.content)
-  if (newText) updateMessage(props.chat.id, actionSheet.value.msg.id, { content: newText })
-  actionSheet.value.show = false
+  if (newText) {
+    updateMessage(props.chat.id, actionSheet.value.msg.id, { content: newText })
+  }
+  actionSheet.value.show = false 
 }
 
-const handleRecallOwn = () => {
-  updateMessage(props.chat.id, actionSheet.value.msg.id, { type: 'recalled', oldContent: actionSheet.value.msg.content })
-  actionSheet.value.show = false
+const handleRecallOwn = () => { 
+  updateMessage(props.chat.id, actionSheet.value.msg.id, { 
+    type: 'recalled', 
+    oldContent: actionSheet.value.msg.content 
+  })
+  actionSheet.value.show = false 
 }
 
 const isSelectionMode = ref(false)
@@ -374,25 +421,33 @@ const cancelSelection = () => {
   selectedIds.value = [] 
 }
 
-const toggleSelect = (id) => {
+const toggleSelect = (id) => { 
   if (!isSelectionMode.value) return
   const idx = selectedIds.value.indexOf(id)
-  if (idx > -1) selectedIds.value.splice(idx, 1)
-  else selectedIds.value.push(id)
-}
-
-const deleteSelected = () => {
-  if (confirm(`确认删除选中的 ${selectedIds.length} 条消息吗？`)) {
-    removeMessages(props.chat.id, selectedIds.value)
-    cancelSelection()
+  if (idx > -1) {
+    selectedIds.value.splice(idx, 1)
+  } else {
+    selectedIds.value.push(id) 
   }
 }
 
-const viewRecall = (oldContent) => { 
-  alert.value = { show: true, type: 'view_recall', title: '撤回的内容', desc: oldContent, inputs: null } 
+const deleteSelected = () => { 
+  if (confirm(`确认删除选中的 ${selectedIds.length} 条消息吗？`)) { 
+    removeMessages(props.chat.id, selectedIds.value)
+    cancelSelection() 
+  } 
 }
 
-// 恢复原始的名字 `alert` 避免逻辑断层
+const viewRecall = (oldContent) => { 
+  alert.value = { 
+    show: true, 
+    type: 'view_recall', 
+    title: '撤回的内容', 
+    desc: oldContent, 
+    inputs: null 
+  } 
+}
+
 const alert = ref({ show: false, type: '', title: '', desc: '', inputs: null })
 
 const openMenuAlert = (type) => {
@@ -430,7 +485,6 @@ const handleAlertConfirm = () => {
   scrollToBottom()
 }
 
-// 核心修复：找回原来的被点击转账状态
 let activeTransferMsg = null
 const handleTransferClick = (msg) => {
   if (msg.status !== 'pending' || msg.role === 'user') return
@@ -445,7 +499,7 @@ const handleTransferClick = (msg) => {
 }
 
 const confirmReceiveTransfer = (action) => {
-  if (!activeTransferMsg) return // 完美找回
+  if (!activeTransferMsg) return
   updateMessage(props.chat.id, activeTransferMsg.id, { status: action === 'accept' ? 'accepted' : 'rejected' })
   pushMessage(props.chat.id, { role: 'system', type: 'text', content: action === 'accept' ? '你已领取转账' : '你已退回转账' })
   pushMessage(props.chat.id, { role: 'user', type: 'transfer_reply', content: '', action: action })
@@ -453,13 +507,19 @@ const confirmReceiveTransfer = (action) => {
   scrollToBottom()
 }
 
+// 核心修复：重摇逻辑寻找最后一个 User 消息，并干掉它之后所有的 AI 消息（一整组）
 const handleReRoll = () => {
-  let lastAiIdx = -1
+  let lastUserIdx = -1
   for (let i = activeMessages.value.length - 1; i >= 0; i--) { 
-    if (activeMessages.value[i].role === 'ai') { lastAiIdx = i; break; } 
+    if (activeMessages.value[i].role === 'user') { 
+      lastUserIdx = i
+      break
+    } 
   }
-  if (lastAiIdx !== -1) {
-    removeMessages(props.chat.id, activeMessages.value.slice(lastAiIdx).map(m => m.id))
+  
+  if (lastUserIdx !== -1 && lastUserIdx < activeMessages.value.length - 1) {
+    const idsToDelete = activeMessages.value.slice(lastUserIdx + 1).map(m => m.id)
+    removeMessages(props.chat.id, idsToDelete)
     triggerAiReply()
   } else {
     window.dispatchEvent(new CustomEvent('sys-toast', { detail: '没有可重摇的回复' }))
@@ -469,18 +529,35 @@ const handleReRoll = () => {
 const checkAndRunAutoSummary = async () => {
   const count = Number(props.chat.settings?.autoSummaryCount) || 0
   if (count <= 0) return
+  
   const aiMsgs = activeMessages.value.filter(m => m.role === 'ai')
   if (aiMsgs.length > 0 && aiMsgs.length % count === 0) {
     try {
-      const historyText = activeMessages.value.slice(-count * 2).filter(m => m.role !== 'system').map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`).join('\n')
+      const historyText = activeMessages.value.slice(-count * 2)
+        .filter(m => m.role !== 'system')
+        .map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`)
+        .join('\n')
+        
       const finalPrompt = props.chat.settings.summaryPrompt + `\n\n【近期记录】\n${historyText}`
-      const res = await fetch(apiUrl.value, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
-        body: JSON.stringify({ model: apiModel.value, messages: [{ role: 'user', content: finalPrompt }] })
+      
+      const res = await fetch(apiUrl.value, { 
+        method: 'POST', 
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${apiKey.value}` 
+        }, 
+        body: JSON.stringify({ 
+          model: apiModel.value, 
+          messages: [{ role: 'user', content: finalPrompt }] 
+        }) 
       })
+      
       if (res.ok) {
         const data = await res.json()
-        await addMemory(props.chat.id, { date: new Date().toLocaleString(), text: data.choices[0].message?.content?.trim() || '' })
+        await addMemory(props.chat.id, { 
+          date: new Date().toLocaleString(), 
+          text: data.choices[0].message?.content?.trim() || '' 
+        })
         window.dispatchEvent(new CustomEvent('sys-toast', { detail: '聊天记忆已自动归档' }))
       }
     } catch (e) { 
@@ -489,9 +566,9 @@ const checkAndRunAutoSummary = async () => {
   }
 }
 
-const copyErrorJson = () => {
+const copyErrorJson = () => { 
   navigator.clipboard.writeText(apiErrorDetails.value)
-  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '报错详情已复制' }))
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '报错详情已复制' })) 
 }
 
 const triggerAiReply = async () => {
@@ -501,6 +578,7 @@ const triggerAiReply = async () => {
 
   try {
     if (!apiKey.value) throw new Error('未设置 API 密钥')
+    
     const apiMessages = buildApiMessages(props.chat, activeMessages.value, activeMemories.value)
     
     apiLog.value.reqTokens = Math.ceil(apiMessages.map(m => m.content).join('').length / 4)
@@ -509,8 +587,14 @@ const triggerAiReply = async () => {
 
     const response = await fetch(apiUrl.value, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
-      body: JSON.stringify({ model: apiModel.value, messages: apiMessages })
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey.value}` 
+      },
+      body: JSON.stringify({ 
+        model: apiModel.value, 
+        messages: apiMessages 
+      })
     })
 
     if (!response.ok) {
@@ -548,6 +632,7 @@ const triggerAiReply = async () => {
       const attrRegex = /(\w+)="([^"]+)"/g
       let attrs = {}
       let attrMatch
+      
       while ((attrMatch = attrRegex.exec(match[0])) !== null) {
         attrs[attrMatch[1]] = attrMatch[2]
       }
@@ -564,18 +649,24 @@ const triggerAiReply = async () => {
 
       if (mType === 'recall') {
         pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'recall_pending', content: mContent })
-        setTimeout(() => { updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) }, 1500)
+        setTimeout(() => { 
+          updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) 
+        }, 1500)
       } else if (mType === 'transfer') {
         pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'transfer', amount: mAmount, content: mContent, status: 'pending' })
       } else if (mType === 'transfer_reply') {
         const pendingMsg = activeMessages.value.slice().reverse().find(m => m.type === 'transfer' && m.status === 'pending')
-        if (pendingMsg) updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+        if (pendingMsg) {
+          updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+        }
         pushMessage(props.chat.id, { role: 'system', type: 'text', content: mAction === 'accept' ? '对方已领取转账' : '对方已退回转账' })
       } else if (mType === 'voice') {
         pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'voice', content: mContent, showText: false })
       } else if (mType === 'music_share' || mType === 'music_cmd') {
         pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, name: mName, artist: mArtist, content: mContent })
-        if (mType === 'music_cmd' && mAction === 'play' && mName) playSpecific({ name: mName, artist: mArtist })
+        if (mType === 'music_cmd' && mAction === 'play' && mName) {
+          playSpecific({ name: mName, artist: mArtist })
+        }
       } else if (mType === 'music_colisten_req') {
         pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'music_colisten_req', content: mContent })
       } else {
@@ -583,35 +674,67 @@ const triggerAiReply = async () => {
       }
     }
     
-    if (!hasMsg && rawText.length > 0) pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
+    if (!hasMsg && rawText.length > 0) {
+      pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
+    }
     
     window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已收到回复' }))
     checkAndRunAutoSummary()
 
-  } catch (error) {
-    apiErrorDetails.value = error.message
-  } finally {
+  } catch (error) { 
+    apiErrorDetails.value = error.message 
+  } finally { 
     isWaiting.value = false
-    scrollToBottom()
+    scrollToBottom() 
   }
 }
 </script>
 
 <style scoped>
-.chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
-.local-music-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
-.local-music-item:active { background: #f9f9f9; }
-.l-name { font-size: 14px; font-weight: 600; color: #333; }
-.l-artist { font-size: 11px; color: #888; margin-top: 2px; }
+.chat-area { 
+  flex: 1; 
+  padding: 20px; 
+  overflow-y: auto; 
+  display: flex; 
+  flex-direction: column; 
+  background: var(--bg-color); 
+  position: relative; 
+}
 
+.local-music-item { 
+  padding: 10px 0; 
+  border-bottom: 1px solid #f0f0f0; 
+  cursor: pointer; 
+}
+.local-music-item:active { 
+  background: #f9f9f9; 
+}
+.l-name { 
+  font-size: 14px; 
+  font-weight: 600; 
+  color: #333; 
+}
+.l-artist { 
+  font-size: 11px; 
+  color: #888; 
+  margin-top: 2px; 
+}
+
+/* 核心修复：动态防挤压推荐卡片样式 */
 .music-action-popup {
   background: #fff;
   border-radius: 24px;
-  padding: 25px;
-  width: 280px;
+  padding: 25px 20px;
+  width: max-content;
+  min-width: 260px;
+  max-width: 85vw;
+  box-sizing: border-box;
   text-align: center;
   box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
 }
+
 .music-action-cover {
   width: 140px;
   height: 140px;
@@ -625,113 +748,144 @@ const triggerAiReply = async () => {
   justify-content: center;
   align-items: center;
 }
-.m-btn {
-  flex: 1;
-  padding: 12px 0;
-  border: none;
-  border-radius: 12px;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-}
-.m-play { background: #5c8aff; color: #fff; }
-.m-add { background: #f4f5f7; color: #333; }
-.m-btn:disabled { opacity: 0.5; pointer-events: none; }
-.music-action-cancel {
-  margin-top: 15px;
-  font-size: 12px;
-  color: #888;
-  cursor: pointer;
-  padding: 5px;
+
+.m-btn { 
+  flex: 1; 
+  padding: 12px 0; 
+  border: none; 
+  border-radius: 12px; 
+  font-weight: 600; 
+  font-size: 14px; 
+  cursor: pointer; 
+  white-space: nowrap; 
 }
 
-/* 所有恢复的内联弹窗样式 */
-.ios-alert-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 999999;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(5px);
-}
-.ios-alert {
-  background: rgba(255,255,255,0.95);
-  width: 280px;
-  border-radius: 18px;
-  text-align: center;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-}
-.ios-alert-title {
-  font-size: 16px;
-  font-weight: 600;
-  padding: 20px 20px 5px;
-  color: #000;
-}
-.ios-alert-desc {
-  font-size: 13px;
-  color: #555;
-  padding: 0 20px 15px;
-}
-.ios-alert-inputs {
-  padding: 0 15px 15px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.ios-alert-input {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 13px;
-  outline: none;
-}
-.ios-alert-actions {
-  display: flex;
-  border-top: 1px solid rgba(0,0,0,0.1);
-}
-.ios-alert-btn {
-  flex: 1;
-  padding: 12px 0;
-  font-size: 16px;
-  color: #007aff;
-  cursor: pointer;
-  border-right: 1px solid rgba(0,0,0,0.1);
-}
-.ios-alert-btn:last-child {
-  border-right: none;
-}
-.ios-alert-btn:active {
-  background: rgba(0,0,0,0.05);
-}
-.ios-alert-btn.bold {
-  font-weight: 600;
-}
-.ios-alert-btn.danger {
-  color: #ff3b30;
+.m-play { 
+  background: #5c8aff; 
+  color: #fff; 
 }
 
-.error-textarea {
-  width: 100%;
-  height: 150px;
-  background: rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 12px;
-  color: #ff5252;
-  outline: none;
-  resize: none;
-  font-family: monospace;
+.m-add { 
+  background: #f4f5f7; 
+  color: #333; 
+}
+
+.m-btn:disabled { 
+  opacity: 0.5; 
+  pointer-events: none; 
+}
+
+.music-action-cancel { 
+  margin-top: 15px; 
+  font-size: 12px; 
+  color: #888; 
+  cursor: pointer; 
+  padding: 5px; 
+}
+
+.music-action-btns { 
+  display: flex; 
+  gap: 10px; 
+  width: 100%; 
+}
+
+.ios-alert-mask { 
+  position: fixed; 
+  top: 0; 
+  left: 0; 
+  right: 0; 
+  bottom: 0; 
+  background: rgba(0,0,0,0.5); 
+  z-index: 999999; 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  backdrop-filter: blur(5px); 
+}
+
+.ios-alert { 
+  background: rgba(255,255,255,0.95); 
+  width: 280px; 
+  border-radius: 18px; 
+  text-align: center; 
+  overflow: hidden; 
+  display: flex; 
+  flex-direction: column; 
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2); 
+}
+
+.ios-alert-title { 
+  font-size: 16px; 
+  font-weight: 600; 
+  padding: 20px 20px 5px; 
+  color: #000; 
+}
+
+.ios-alert-desc { 
+  font-size: 13px; 
+  color: #555; 
+  padding: 0 20px 15px; 
+}
+
+.ios-alert-inputs { 
+  padding: 0 15px 15px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px; 
+}
+
+.ios-alert-input { 
+  width: 100%; 
+  box-sizing: border-box; 
+  background: rgba(0,0,0,0.05); 
+  border: 1px solid rgba(0,0,0,0.1); 
+  border-radius: 8px; 
+  padding: 10px; 
+  font-size: 13px; 
+  outline: none; 
+}
+
+.ios-alert-actions { 
+  display: flex; 
+  border-top: 1px solid rgba(0,0,0,0.1); 
+}
+
+.ios-alert-btn { 
+  flex: 1; 
+  padding: 12px 0; 
+  font-size: 16px; 
+  color: #007aff; 
+  cursor: pointer; 
+  border-right: 1px solid rgba(0,0,0,0.1); 
+}
+
+.ios-alert-btn:last-child { 
+  border-right: none; 
+}
+
+.ios-alert-btn:active { 
+  background: rgba(0,0,0,0.05); 
+}
+
+.ios-alert-btn.bold { 
+  font-weight: 600; 
+}
+
+.ios-alert-btn.danger { 
+  color: #ff3b30; 
+}
+
+.error-textarea { 
+  width: 100%; 
+  height: 150px; 
+  background: rgba(0,0,0,0.05); 
+  border: 1px solid rgba(0,0,0,0.1); 
+  border-radius: 8px; 
+  padding: 10px; 
+  font-size: 12px; 
+  color: #ff5252; 
+  outline: none; 
+  resize: none; 
+  font-family: monospace; 
 }
 </style>

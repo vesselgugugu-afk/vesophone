@@ -24,7 +24,6 @@ rawData.forEach(chat => {
   if (chat.settings.renderMessageCount === undefined) chat.settings.renderMessageCount = 50
   if (chat.settings.contextMessageCount === undefined) chat.settings.contextMessageCount = 20
   
-  // 新增：主动发消息配置
   if (chat.settings.proactiveEnabled === undefined) chat.settings.proactiveEnabled = false
   if (chat.settings.proactiveIntervalMin === undefined) chat.settings.proactiveIntervalMin = 60
 
@@ -43,6 +42,7 @@ const cssPresets = ref(load(KEY_CSS, []))
 
 const activeMessages = ref([])
 const activeMemories = ref([])
+let activeSessionId = null
 
 if (!localStorage.getItem('dbMigrated_v2')) {
   chatSessions.value.forEach(async (chat) => {
@@ -84,9 +84,9 @@ export function useChatSessions() {
       isGroup: selectedChars.length > 1,
       participants: selectedChars,
       lastMessage: '新对话已创建',
-      lastMessageTimestamp: Date.now(), // 记录最后消息时间用于主动触发
+      lastMessageTimestamp: Date.now(),
       settings: {
-        summaryPrompt: '请阅读以下对话记录，并以第三人称客观视角总结出核心的“长期记忆”（如重要的事件、建立的关系、得知的情报等）。不要输出任何废话，直接输出总结内容。',
+        summaryPrompt: '请阅读以下对话记录，并以第三人称客观视角总结出核心的"长期记忆"（如重要的事件、建立的关系、得知的情报等）。不要输出任何废话，直接输出总结内容。',
         autoSummaryCount: 0,
         renderMessageCount: 50,
         contextMessageCount: 20,
@@ -112,6 +112,7 @@ export function useChatSessions() {
   }
 
   const loadSessionData = async (sessionId) => {
+    activeSessionId = sessionId
     activeMessages.value = await db.messages.where({ sessionId }).toArray()
     activeMemories.value = await db.memories.where({ sessionId }).toArray()
   }
@@ -121,9 +122,11 @@ export function useChatSessions() {
     if (!message.timestamp) message.timestamp = Date.now()
     
     const fullMsg = { ...message, sessionId }
+    
+    // 核心修复：总是写入数据库，但只有当前激活的会话才更新界面
     await db.messages.add(fullMsg)
     
-    if (activeMessages.value.length === 0 || activeMessages.value[0].sessionId === sessionId) {
+    if (activeSessionId === sessionId) {
       activeMessages.value.push(fullMsg)
     }
 
@@ -133,6 +136,8 @@ export function useChatSessions() {
       else if (message.type === 'voice') session.lastMessage = '[语音]'
       else if (message.type === 'sticker') session.lastMessage = '[表情包]'
       else if (message.type === 'transfer') session.lastMessage = '[转账]'
+      else if (message.type === 'lyric_share') session.lastMessage = '[歌词卡片]'
+      else if (message.type === 'music_share') session.lastMessage = '[音乐推荐]'
       else session.lastMessage = message.content
       
       session.lastMessageTimestamp = message.timestamp
@@ -156,10 +161,12 @@ export function useChatSessions() {
     await db.memories.add(fullMem)
     activeMemories.value.push(fullMem)
   }
+
   const deleteMemory = async (memoryId) => {
     await db.memories.where({ id: memoryId }).delete()
     activeMemories.value = activeMemories.value.filter(m => m.id !== memoryId)
   }
+
   const updateMemory = async (memoryId, text) => {
     await db.memories.where({ id: memoryId }).modify({ text })
     const mem = activeMemories.value.find(m => m.id === memoryId)
@@ -170,8 +177,21 @@ export function useChatSessions() {
   const deleteCssPreset = (id) => { cssPresets.value = cssPresets.value.filter(p => p.id !== id) }
 
   return { 
-    chatSessions, cssPresets, activeMessages, activeMemories,
-    createSession, deleteSession, loadSessionData, pushMessage, updateMessage, removeMessages,
-    addMemory, deleteMemory, updateMemory, saveCssPreset, deleteCssPreset
+    chatSessions,
+    sessions: chatSessions, // 同时导出 sessions 别名，供 MusicApp 使用
+    cssPresets,
+    activeMessages,
+    activeMemories,
+    createSession,
+    deleteSession,
+    loadSessionData,
+    pushMessage,
+    updateMessage,
+    removeMessages,
+    addMemory,
+    deleteMemory,
+    updateMemory,
+    saveCssPreset,
+    deleteCssPreset
   }
 }
