@@ -178,9 +178,10 @@ const formatTime = (msg) => {
   return `${hours}:${mins}`
 }
 
-const buildRegexSafe = (patternStr) => {
+// 核心修复：这个编译器专门给替换用的，强制开启 `g` 标志！
+const buildRegexSafeForStrip = (patternStr) => {
   if (!patternStr) return null;
-  let flags = '';
+  let flags = 'g';
   let pattern = patternStr;
   const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
   if (match) {
@@ -196,26 +197,23 @@ const buildRegexSafe = (patternStr) => {
   }
 }
 
-// 核心：无差别的历史垃圾清道夫！
+// 核心增强：历史垃圾清道夫
 const displayContent = computed(() => {
   if (props.msg.type !== 'text' && props.msg.type !== 'quote' && props.msg.type) return props.msg.content
   let txt = props.msg.content || ''
   
   if (props.msg.role === 'ai') {
-    // 1. 根据当前的正则进行精确抹除
+    // 1. 如果新数据不幸漏到 content 里，用当前正则干掉
     if (props.chat?.settings?.regexPattern) {
       try {
-        const baseRegex = buildRegexSafe(props.chat.settings.regexPattern);
+        const baseRegex = buildRegexSafeForStrip(props.chat.settings.regexPattern);
         if (baseRegex) txt = txt.replace(baseRegex, '').trim()
       } catch (e) {}
     }
 
-    // 2. 清道夫行动：哪怕正则没配上，也强行干掉常见残留结构！防止历史旧账污染气泡
-    // 吃掉 ```xml ... ``` 块
+    // 2. 无差别清道夫：针对老记录的格式，强行吃掉它们！
     txt = txt.replace(/```[\s\S]*?```/g, '');
-    // 吃掉旧版 <status_xxx> ... </status_xxx> 格式
     txt = txt.replace(/<[a-zA-Z0-9_]+>\s*\[[\s\S]*?\]\s*<\/[a-zA-Z0-9_]+>/g, '');
-    // 吃掉大量方括号组成的键值对长块 [Name=... Status=...]
     txt = txt.replace(/\[\s*(?:[a-zA-Z0-9_]+[=|\|][\s\S]*?){2,}\]/g, '');
 
     txt = txt.trim()
@@ -298,4 +296,3 @@ const stickerUrl = computed(() => {
 .msg-bubble.is-colisten-req { background: #eef2ff !important; color: #5c8aff !important; border: 1px solid rgba(92,138,255,0.3); padding: 12px 15px !important; cursor: pointer; text-align: center; }
 .msg-bubble.is-colisten-req:active { background: #e0e8ff !important; }
 </style>
-

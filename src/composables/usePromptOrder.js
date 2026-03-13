@@ -6,6 +6,7 @@ import { useMusic } from './useMusic'
 
 const KEY = 'promptOrder'
 const KEY_CUSTOM = 'customPrompts'
+const KEY_PRESETS = 'promptPresets'
 
 const load = (key, def) => { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def }
 
@@ -21,6 +22,7 @@ const defaultOrder = [
 
 let savedOrder = load(KEY, defaultOrder)
 let savedCustoms = load(KEY_CUSTOM, [])
+let savedPresets = load(KEY_PRESETS, [])
 
 if (savedOrder.length > 0 && typeof savedOrder[0] === 'string') savedOrder = defaultOrder
 if (!savedOrder.find(o => o.key === 'functional')) savedOrder.unshift({ id: 'sys_functional', type: 'system', key: 'functional' })
@@ -40,9 +42,11 @@ savedOrder.forEach(item => {
 
 const promptOrder = ref(migratedOrder)
 const customPrompts = ref(savedCustoms)
+const promptPresets = ref(savedPresets)
 
 watch(promptOrder, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
-watch(customPrompts, (v) => localStorage.setItem(KEY_CUSTOM, JSON.stringify(v)), { deep: true })
+watch(customPrompts, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
+watch(promptPresets, (v) => localStorage.setItem(KEY_PRESETS, JSON.stringify(v)), { deep: true })
 
 const ORDER_NAMES = { functional: '线上聊天协议指导 (必选)', global_worldbook: '全局世界书', local_worldbook: '局部世界书（角色绑定）', persona: '我的人设', character: '角色设定', memory: '长期记忆库', chat_history: '聊天记录' }
 const ORDER_ICONS = { functional: 'fas fa-terminal', global_worldbook: 'fas fa-globe', local_worldbook: 'fas fa-book', persona: 'fas fa-id-badge', character: 'fas fa-robot', memory: 'fas fa-brain', chat_history: 'fas fa-comments' }
@@ -61,7 +65,7 @@ export function usePromptOrder() {
     if (!form.name || !form.content) return false
     const catName = form.category || '自定义'; const catId = 'cat_group_' + catName
     if (!promptOrder.value.find(o => o.id === catId)) promptOrder.value.push({ id: catId, type: 'custom_category', category: catName })
-    customPrompts.value.push({ id: 'custom_' + Date.now(), name: form.name, category: catName, content: form.content, injectRole: form.injectRole || 'system' })
+    customPrompts.value.push({ id: 'custom_' + Date.now(), name: form.name, category: catName, content: form.content, injectRole: form.injectRole || 'system', enabled: true })
     return true
   }
 
@@ -78,6 +82,45 @@ export function usePromptOrder() {
     const i1 = customPrompts.value.findIndex(p => p.id === id1)
     const i2 = customPrompts.value.findIndex(p => p.id === id2)
     const temp = customPrompts.value[i1]; customPrompts.value[i1] = customPrompts.value[i2]; customPrompts.value[i2] = temp
+  }
+
+  const savePromptPreset = (name) => {
+    const id = 'preset_' + Date.now()
+    promptPresets.value.push({
+      id,
+      name,
+      promptOrder: JSON.parse(JSON.stringify(promptOrder.value)),
+      customPrompts: JSON.parse(JSON.stringify(customPrompts.value))
+    })
+    return id
+  }
+
+  const loadPromptPreset = (id) => {
+    const preset = promptPresets.value.find(p => p.id === id)
+    if (preset) {
+      promptOrder.value = JSON.parse(JSON.stringify(preset.promptOrder))
+      customPrompts.value = JSON.parse(JSON.stringify(preset.customPrompts))
+      return true
+    }
+    return false
+  }
+
+  const deletePromptPreset = (id) => {
+    promptPresets.value = promptPresets.value.filter(p => p.id !== id)
+  }
+
+  const importConfig = (jsonStr) => {
+    try {
+      const data = JSON.parse(jsonStr)
+      if (data.promptOrder && data.customPrompts) {
+        promptOrder.value = data.promptOrder
+        customPrompts.value = data.customPrompts
+        return true
+      }
+      return false
+    } catch (e) {
+      return false
+    }
   }
 
   const getOnlineChatProtocol = (availableStickers = []) => {
@@ -136,54 +179,52 @@ export function usePromptOrder() {
     return prompt.trim()
   }
 
-  // 时间格式化辅助函数
   const formatDate = (ts) => {
     const d = new Date(ts)
     return `[${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}]`
   }
 
-const previewData = computed(() => {
-  let text = ''
-  let staticTokenStr = ''
-  promptOrder.value.forEach((item) => {
-    if (item.key === 'functional') {
-      const fp = getOnlineChatProtocol([])
-      text += `[线上聊天协议指导]\n${fp}\n\n`
-      staticTokenStr += fp
-    } else if (item.type === 'custom_category') {
-      const catItems = customPrompts.value.filter(p => p.category === item.category)
-      if (catItems.length > 0) {
-        text += `[组 · ${item.category}]\n`
-        catItems.forEach(cp => {
-          text += `  · ${cp.name}: ${cp.content}\n`
-          staticTokenStr += cp.content
-        })
-        text += '\n'
+  const previewData = computed(() => {
+    let text = ''
+    let staticTokenStr = ''
+    promptOrder.value.forEach((item) => {
+      if (item.key === 'functional') {
+        const fp = getOnlineChatProtocol([])
+        text += `[线上聊天协议指导]\n${fp}\n\n`
+        staticTokenStr += fp
+      } else if (item.type === 'custom_category') {
+        const catItems = customPrompts.value.filter(p => p.category === item.category && p.enabled !== false)
+        if (catItems.length > 0) {
+          text += `[组 · ${item.category}]\n`
+          catItems.forEach(cp => {
+            text += `  · ${cp.name}: ${cp.content}\n`
+            staticTokenStr += cp.content
+          })
+          text += '\n'
+        }
+      } else if (item.key === 'global_worldbook') {
+        if (enabledWorldbooks.value.length > 0) {
+          text += `[全局世界书]\n`
+          enabledWorldbooks.value.forEach((wb) => {
+            text += `  · ${wb.title}: ${wb.content}\n`
+            staticTokenStr += wb.content
+          })
+          text += '\n'
+        }
+      } else if (item.key === 'local_worldbook') {
+        text += `[局部世界书] (因聊天绑定动态生效)\n\n`
+      } else if (item.key === 'persona') {
+        text += `[我的人设] (全局或聊天专属覆盖)\n\n`
+      } else if (item.key === 'character') {
+        text += `[角色设定] (动态条件注入)\n\n`
+      } else if (item.key === 'memory') {
+        text += `[长期记忆库] (动态提取)\n\n`
+      } else if (item.key === 'chat_history') {
+        text += `[聊天记录] (动态切片)\n\n`
       }
-    } else if (item.key === 'global_worldbook') {
-      if (enabledWorldbooks.value.length > 0) {
-        text += `[全局世界书]\n`
-        enabledWorldbooks.value.forEach((wb) => {
-          text += `  · ${wb.title}: ${wb.content}\n`
-          staticTokenStr += wb.content
-        })
-        text += '\n'
-      }
-    } else if (item.key === 'local_worldbook') {
-      text += `[局部世界书] (因聊天绑定动态生效)\n\n`
-    } else if (item.key === 'persona') {
-      text += `[我的人设] (全局或聊天专属覆盖)\n\n`
-    } else if (item.key === 'character') {
-      text += `[角色设定] (动态条件注入)\n\n`
-    } else if (item.key === 'memory') {
-      text += `[长期记忆库] (动态提取)\n\n`
-    } else if (item.key === 'chat_history') {
-      text += `[聊天记录] (动态切片)\n\n`
-    }
+    })
+    return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
   })
-  return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
-})
-
 
   const buildApiMessages = (currentChat, activeMessages, activeMemories) => {
     const apiMessages = []
@@ -209,9 +250,24 @@ ${musicState.islandSubtitle ? `当前刚好唱到这句歌词：“${musicState.
 ${queueStr}
 你可以结合歌词回复，也可以把它当bgm继续聊。如果你有想听的歌，可以使用 <msg type="music_cmd" action="play"> 为用户切一首新歌。`
         }
+
+        // 核心更新：实时时间感知注入
+        if (currentChat.settings?.realTimePerception) {
+          const now = new Date()
+          const timeStr = now.toLocaleString('zh-CN', { hour12: false, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          baseProtocol += `\n\n[🕒 现实时间感知]\n当前的现实时间是：${timeStr}。请根据当前的时间给出合理的回复。`
+        }
+        
+        if (currentChat.settings?.promptSuffix && currentChat.settings.promptSuffix.trim() !== '') {
+          baseProtocol += `\n\n[状态协议更新指令]\n${currentChat.settings.promptSuffix.trim()}`
+        }
+        
         apiMessages.push({ role: 'system', content: baseProtocol }) 
       }
-      else if (item.type === 'custom_category') { const catItems = customPrompts.value.filter(p => p.category === item.category); catItems.forEach(cp => apiMessages.push({ role: cp.injectRole || 'system', content: cp.content })) }
+      else if (item.type === 'custom_category') { 
+        const catItems = customPrompts.value.filter(p => p.category === item.category && p.enabled !== false); 
+        catItems.forEach(cp => apiMessages.push({ role: cp.injectRole || 'system', content: cp.content })) 
+      }
       else if (item.key === 'global_worldbook') { enabledWorldbooks.value.forEach((wb) => apiMessages.push({ role: wb.injectRole || 'system', content: wb.content })) }
       else if (item.key === 'local_worldbook') {
         if (currentChat.boundWorldbookIds) {
@@ -241,7 +297,6 @@ ${queueStr}
         const history = recentMessages
           .filter((m) => m.role !== 'system')
           .map((m) => {
-            // 核心修复：提取并拼接精确的时间戳前缀！
             const timePrefix = formatDate(m.timestamp || m.id) + ' '
             let prefix = '', cont = m.content
             
@@ -265,5 +320,5 @@ ${queueStr}
     return apiMessages
   }
 
-  return { promptOrder, customPrompts, getOrderName, getOrderIcon, moveOrder, moveCustomItem, saveCustomPrompt, deleteCustomPrompts, previewData, buildApiMessages, buildCharacterPrompt }
+  return { promptOrder, customPrompts, promptPresets, getOrderName, getOrderIcon, moveOrder, moveCustomItem, saveCustomPrompt, deleteCustomPrompts, savePromptPreset, loadPromptPreset, deletePromptPreset, previewData, buildApiMessages, buildCharacterPrompt, importConfig }
 }

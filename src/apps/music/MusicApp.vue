@@ -8,7 +8,7 @@
       <div class="music-header">
         <button class="icon-btn" @click="$emit('close')"><i class="fas fa-chevron-down"></i></button>
         <div class="header-info">
-          <!-- 核心修复：正确显示动态计算出的同频聊天名字 -->
+          <!-- 核心修复：完美支持会话与角色双向解析的名字 -->
           <div v-if="musicState.coListenCharId" class="co-listen-badge"><i class="fas fa-headphones"></i> 一起听: {{ coListenName }}</div>
           <div v-else style="font-size:12px; color:#aaa; font-weight:600; letter-spacing:1px;">AERO MUSIC</div>
         </div>
@@ -133,7 +133,7 @@ const emit = defineEmits(['close'])
 
 const { musicState, togglePlay, playNext, playPrev, seek } = useMusic()
 const { characters } = useCharacters()
-const { pushMessage, sessions } = useChatSessions()
+const { pushMessage, sessions, chatList } = useChatSessions() // 加入稳妥提取
 
 const viewMode = ref('disc')
 const activeModal = ref(null)
@@ -145,13 +145,26 @@ const customLrcMsg = ref('')
 const showIslandSettings = ref(false)
 const islandSettings = ref({ mode: 'capsule', scale: 1.0, opacity: 0.95 })
 
-// 核心修复：根据 coListenCharId 动态查找会话标题
+// 核心修复：更聪明的双向解析引擎
 const coListenName = computed(() => {
   if (!musicState.coListenCharId) return ''
-  if (!sessions || !sessions.value) return '未知会话'
-  const chat = sessions.value.find(c => c.id === musicState.coListenCharId)
-  if (chat) return chat.title
-  return '未知会话'
+  
+  // 1. 如果传进来的是角色 ID，查角色表
+  const char = characters.value.find(c => c.id === musicState.coListenCharId)
+  if (char) return char.name
+  
+  // 2. 如果传进来的是会话 ID (chat.id)，查会话表
+  const chatArray = (sessions && sessions.value) || (chatList && chatList.value) || []
+  const chat = chatArray.find(c => c.id === musicState.coListenCharId)
+  if (chat) {
+     // 如果是单聊，更亲切地显示角色的名字而不是生硬的会话名
+     if (!chat.isGroup && chat.participants && chat.participants.length > 0) {
+         return chat.participants[0].name
+     }
+     return chat.title
+  }
+  
+  return '未知羁绊'
 })
 
 const openIslandSettings = () => { try { const s = localStorage.getItem('islandSettings'); if (s) islandSettings.value = JSON.parse(s) } catch(e) {}; showIslandSettings.value = true }
@@ -172,10 +185,11 @@ const handleSeek = (time) => seek(time)
 const openLyricShareTarget = (txt) => { pendingLrcText.value = txt; customLrcMsg.value = '' }
 const confirmShareLrc = () => {
   let targetChatId = pendingLrcCharId.value;
-  if (sessions && sessions.value) {
-    const matchedChat = sessions.value.find(s => !s.isGroup && s.participants && s.participants.length > 0 && s.participants[0].id === pendingLrcCharId.value)
-    if (matchedChat) targetChatId = matchedChat.id
-  }
+  // 核心增强：确保找得到正确的聊天对象
+  const chatArray = (sessions && sessions.value) || (chatList && chatList.value) || []
+  const matchedChat = chatArray.find(s => !s.isGroup && s.participants && s.participants.length > 0 && s.participants[0].id === pendingLrcCharId.value)
+  if (matchedChat) targetChatId = matchedChat.id
+  
   pushMessage(targetChatId, { role: 'user', type: 'lyric_share', text: pendingLrcText.value, song: musicState.currentSongName, content: customLrcMsg.value || '这句歌词让我想起了你...' })
   window.dispatchEvent(new CustomEvent('sys-toast', { detail: '歌词卡片已发送至聊天' }))
   pendingLrcCharId.value = null; pendingLrcText.value = null

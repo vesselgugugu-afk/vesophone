@@ -119,7 +119,7 @@
               </div>
               <div class="wb-group-list">
                 <label v-for="wb in wbs" :key="wb.id" class="wb-item-label">
-                  <input type="checkbox" :checked="draft.boundWorldbookIds && draft.boundWorldbookIds.includes(wb.id)" @change="toggleLocalWb(wb.id)" />
+                  <input type="checkbox" :value="wb.id" v-model="draft.boundWorldbookIds" />
                   <span class="wb-item-title">{{ wb.title }}</span>
                 </label>
               </div>
@@ -144,6 +144,19 @@
           <div v-if="draft.settings.proactiveEnabled" style="display:flex; flex-direction:column; gap:6px;">
             <label style="font-size:11px; color:var(--text-sub);">至少间隔多久才有概率发 (分钟)</label>
             <input type="number" class="ins-input" style="background:#f4f5f7; border-radius:8px; padding:10px;" v-model="draft.settings.proactiveIntervalMin" placeholder="60" />
+          </div>
+        </div>
+
+        <!-- 核心更新：增强感知系统 -->
+        <div style="background:#fff; border-radius:14px; padding:15px; display:flex; flex-direction:column; gap:15px;">
+          <div style="font-weight:600; font-size:13px; color:var(--text-main);">增强感知系统</div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:13px; color:var(--text-main);">实时时间感知</div>
+              <div style="font-size:10px; color:#888; margin-top:4px;">将现实系统时间动态注入给AI，让其具备时间感</div>
+            </div>
+            <ToggleSwitch v-model="draft.settings.realTimePerception" />
           </div>
         </div>
 
@@ -177,6 +190,11 @@
             </div>
           </div>
           
+          <div style="font-size:11px; color:#888; line-height:1.4; margin-top:-5px;">
+            支持导入标准JSON文件，兼容自定义格式与酒馆格式。<br>
+            提示词将自动注入到最后一次发送的用户消息中。
+          </div>
+          
           <div style="display:flex; flex-direction:column; gap:6px;">
             <label style="font-size:11px; color:var(--text-sub); font-weight:600;">发给AI的状态栏条数 (防Token爆炸)</label>
             <input type="number" class="ins-input" style="background:#f4f5f7; border-radius:8px; padding:10px; font-size:11px;" v-model="draft.settings.statusContextCount" placeholder="默认 1 条，即只发最新的一条状态" />
@@ -196,8 +214,20 @@
             <label style="font-size:11px; color:var(--text-sub); font-weight:600;">HTML 渲染模板 (支持 &lt;!DOCTYPE html&gt;)</label>
             <textarea style="width:100%; height:180px; background:#282c34; color:#abb2bf; font-family:monospace; font-size:12px; padding:10px; border-radius:10px; border:none; outline:none; resize:none; line-height:1.5;" v-model="draft.settings.replacePattern"></textarea>
           </div>
-          
+
           <button class="btn-send" style="padding:8px; border-radius:8px; font-size:12px;" @click="handleSaveAsStatusPreset">保存到动态预设库</button>
+          
+          <div style="border-top: 1px dashed #eee; margin: 10px 0; padding-top: 15px; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-weight:600; font-size:13px; color:var(--text-main); display:flex; align-items:center; gap:6px;">
+              <i class="fas fa-flask" style="color:#5c8aff;"></i> 实时沙盒预览测试
+            </div>
+            <textarea style="width:100%; height:60px; background:#f4f5f7; border-radius:8px; border:none; padding:8px; font-size:11px; resize:none; outline:none;" v-model="mockStatusText" placeholder="在此输入模拟的 AI 状态栏原文用于测试解析..."></textarea>
+            <div style="background:#282c34; border-radius:10px; padding:10px; min-height:80px; overflow:hidden; position:relative; box-shadow:inset 0 2px 10px rgba(0,0,0,0.2);">
+               <iframe v-if="isPreviewFullHtml" :srcdoc="renderedStatusPreview" style="width:100%; border:none; height:200px; background:transparent;"></iframe>
+               <div v-else v-html="renderedStatusPreview" style="color:#abb2bf; font-size:12px;"></div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -288,6 +318,7 @@ const showStickerManager = ref(false)
 const showAvatarAction = ref(false)
 
 const draft = ref({})
+const mockStatusText = ref('<statue_update>\n  <HP>100</HP>\n  <MOOD>开心</MOOD>\n</statue_update>\n\n<msg type="text">早上好呀！</msg>')
 
 watch(() => props.show, (val) => {
   if (val) {
@@ -297,8 +328,9 @@ watch(() => props.show, (val) => {
     if (draft.value.settings.promptSuffix === undefined) draft.value.settings.promptSuffix = ''
     if (draft.value.settings.regexPattern === undefined) draft.value.settings.regexPattern = ''
     if (draft.value.settings.replacePattern === undefined) draft.value.settings.replacePattern = ''
-    // 赋初始值为 1，代表只截取最近1条带给 AI
     if (draft.value.settings.statusContextCount === undefined) draft.value.settings.statusContextCount = 1 
+    if (draft.value.settings.realTimePerception === undefined) draft.value.settings.realTimePerception = false // 初始化时间感知开关
+    if (!draft.value.boundWorldbookIds) draft.value.boundWorldbookIds = []
     
     activeTab.value = 'basic'
   }
@@ -345,16 +377,6 @@ const groupedLocalWorldbooks = computed(() => {
   return groups
 })
 
-const toggleLocalWb = (wbId) => {
-  if (!draft.value.boundWorldbookIds) draft.value.boundWorldbookIds = []
-  const idx = draft.value.boundWorldbookIds.indexOf(wbId)
-  if (idx > -1) {
-    draft.value.boundWorldbookIds.splice(idx, 1)
-  } else {
-    draft.value.boundWorldbookIds.push(wbId)
-  }
-}
-
 const toggleLocalWbGroup = (wbs, state) => {
   if (!draft.value.boundWorldbookIds) draft.value.boundWorldbookIds = []
   wbs.forEach(wb => {
@@ -392,7 +414,6 @@ const applyVariablePreset = (indexStr) => {
   }
 }
 
-/* ================= 状态栏预设管理 ================= */
 const selectedStatusPresetId = ref('')
 
 const applyStatusPreset = () => {
@@ -460,7 +481,39 @@ const handleJsonFileChange = (e) => {
   }
   reader.readAsText(file)
 }
-/* ================================================ */
+
+const buildRegexSafeForPreview = (patternStr) => {
+  if (!patternStr) return null;
+  let flags = '';
+  let pattern = patternStr;
+  const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
+  if (match) {
+    pattern = match[1];
+    flags = match[2].replace('g', '');
+  } else if (patternStr.includes('\\\\[')) {
+    pattern = pattern.replace(/\\\\/g, '\\');
+  }
+  try { return new RegExp(pattern, flags); } catch(e) { return null; }
+}
+
+const renderedStatusPreview = computed(() => {
+  if (!draft.value?.settings?.regexPattern || !draft.value?.settings?.replacePattern) return '<div style="text-align:center; padding:20px; color:#666;">请先在上方填写正则和模板</div>'
+  try {
+    const regex = buildRegexSafeForPreview(draft.value.settings.regexPattern)
+    if (!regex) return '<div style="color:#ff5252;">正则编译失败</div>'
+    const match = mockStatusText.value.match(regex)
+    if (match) return match[0].replace(regex, draft.value.settings.replacePattern)
+    return '<div style="color:#ff5252;">[警告] 未能匹配到状态，请检查测试文本与正则表达式是否对应。</div>'
+  } catch(e) { 
+    return `<div style="color:#ff5252;">解析错误: ${e.message}</div>` 
+  }
+})
+
+const isPreviewFullHtml = computed(() => {
+  if (!renderedStatusPreview.value) return false
+  const lower = renderedStatusPreview.value.toLowerCase()
+  return lower.includes('<!doctype html>') || lower.includes('<html')
+})
 
 const triggerUpload = (target) => {
   showAvatarAction.value = false

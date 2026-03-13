@@ -32,7 +32,8 @@ defineEmits(['close'])
 
 const buildRegexSafe = (patternStr) => {
   if (!patternStr) return null;
-  let flags = '';
+  // 给查找用的正则默认去掉 g，以便用 match[0]、match[1] 抓组
+  let flags = ''; 
   let pattern = patternStr;
   const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
   if (match) {
@@ -41,7 +42,11 @@ const buildRegexSafe = (patternStr) => {
   } else if (patternStr.includes('\\\\[')) {
     pattern = pattern.replace(/\\\\/g, '\\');
   }
-  return new RegExp(pattern, flags);
+  try {
+    return new RegExp(pattern, flags);
+  } catch(e) {
+    return null;
+  }
 }
 
 const renderedHtml = computed(() => {
@@ -55,16 +60,20 @@ const renderedHtml = computed(() => {
 
   try {
     const regex = buildRegexSafe(settings.regexPattern);
+    if (!regex) throw new Error("正则编译失败！请检查语法。");
+    
     const targetText = props.msg.rawStatus || props.msg.content || '';
     const match = targetText.match(regex);
     
     if (match) {
       return match[0].replace(regex, settings.replacePattern)
     } else {
-      const safeText = targetText.substring(0, 200).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return `<div style="color:#ff5252; text-align:left; padding:20px; background:rgba(0,0,0,0.8); border-radius:16px; font-size: 14px; line-height: 1.5;">
-        <div style="font-weight:bold; margin-bottom:8px;">未能匹配到状态。</div>
-        <div style="color:#aaa; margin-bottom:4px;">当前消息原文前 200 字:</div>
+      const safeText = targetText.substring(0, 300).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div style="color:#ff5252; text-align:left; padding:20px; background:rgba(0,0,0,0.8); border-radius:16px; font-size: 13px; line-height: 1.5; word-break:break-all;">
+        <div style="font-weight:bold; margin-bottom:8px; font-size:15px;">⚠️ 未能匹配到状态！</div>
+        <div style="color:#aaa; margin-bottom:4px;">引擎使用的正则:</div>
+        <div style="font-family:monospace; background:#222; padding:6px; border-radius:6px; margin-bottom:12px;">${regex.toString()}</div>
+        <div style="color:#aaa; margin-bottom:4px;">气泡原文 (前300字):</div>
         <div style="font-family:monospace; background:#222; padding:6px; border-radius:6px; white-space:pre-wrap;">${safeText}</div>
       </div>`
     }

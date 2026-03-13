@@ -615,14 +615,11 @@ const triggerAiReply = async () => {
   try {
     if (!apiKey.value) throw new Error('未设置 API 密钥')
     
-    // 核心更新：发往 AI 前的记忆截断拦截器
     const contextLimit = Number(props.chat.settings?.statusContextCount ?? 1);
     let aiMsgCount = 0;
     
-    // 深拷贝消息数组，防止污染前端视图
     const messagesForApi = activeMessages.value.map(m => ({ ...m }));
     
-    // 从后往前扫，只将最近指定的 N 条状态信息附着在 content 上发给 AI
     for (let i = messagesForApi.length - 1; i >= 0; i--) {
       const msg = messagesForApi[i];
       if (msg.role === 'ai') {
@@ -636,10 +633,6 @@ const triggerAiReply = async () => {
     }
 
     const apiMessages = buildApiMessages(props.chat, messagesForApi, activeMemories.value)
-    
-    if (props.chat.settings?.promptSuffix && props.chat.settings.promptSuffix.trim() !== '') {
-      apiMessages.push({ role: 'system', content: props.chat.settings.promptSuffix })
-    }
     
     apiLog.value.reqTokens = Math.ceil(apiMessages.map(m => m.content).join('').length / 4)
     apiLog.value.req = JSON.parse(JSON.stringify(apiMessages))
@@ -657,14 +650,25 @@ const triggerAiReply = async () => {
       })
     })
 
+    // ===== 核心增强：HTTP 错误捕获引擎 =====
     if (!response.ok) {
-      let errTxt = response.statusText
-      try { 
-        const errObj = await response.json()
-        errTxt = JSON.stringify(errObj, null, 2) 
-      } catch(e) {}
-      throw new Error(errTxt)
+      let errTxt = `API 拒绝访问: HTTP ${response.status} (${response.statusText})`;
+      try {
+        const errText = await response.text();
+        try {
+          const errObj = JSON.parse(errText);
+          if (errObj.error && errObj.error.message) {
+            errTxt += `\n\n【错误详情】\n${errObj.error.message}`;
+          } else {
+            errTxt += `\n\n【返回参数】\n${JSON.stringify(errObj, null, 2)}`;
+          }
+        } catch (e) {
+          if (errText) errTxt += `\n\n【原始报文】\n${errText}`;
+        }
+      } catch (e) {}
+      throw new Error(errTxt);
     }
+    // ========================================
     
     const data = await response.json()
     let rawText = data.choices[0].message?.content || ''

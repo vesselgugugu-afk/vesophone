@@ -6,8 +6,8 @@
     </div>
     
     <div v-else style="display:flex; gap:8px; align-items:center; width:100%;">
-      <div class="action-icon-btn" style="background:#eef2ff; color:#5c8aff; border-radius:50%; width:36px; height:36px; font-size:16px;" @click="$emit('trigger-ai')">
-        <i class="fas fa-robot"></i>
+      <div class="action-icon-btn ai-btn" @click="$emit('trigger-ai')">
+        <i class="fas fa-star"></i>
       </div>
 
       <div v-if="quotingText" style="position:absolute; top:-40px; left:15px; right:15px; background:rgba(240,240,240,0.9); padding:8px 15px; border-radius:10px; font-size:11px; color:#666; display:flex; justify-content:space-between; box-shadow:0 2px 10px rgba(0,0,0,0.05);">
@@ -17,12 +17,14 @@
 
       <input type="text" class="chat-input" v-model="localText" @keyup.enter="handleSend" placeholder="输入消息..." style="flex:1; min-width:0;" />
       
-      <div class="action-icon-btn" @click="toggleStickerPanel">
+      <div class="action-icon-btn" @click="toggleStickerPanel" style="width:36px; height:36px;">
         <i class="fas fa-smile-wink"></i>
       </div>
 
-      <button v-if="localText.trim()" class="btn-send" @click="handleSend">发送</button>
-      <div v-else class="action-icon-btn" @click="toggleMorePanel" style="border:1px solid #ddd; border-radius:50%; width:36px; height:36px; font-size:16px;">
+      <button v-if="localText.trim()" class="btn-send" @click="handleSend">
+        <i class="fas fa-paper-plane" style="margin-right:2px; margin-top:1px;"></i>
+      </button>
+      <div v-else class="action-icon-btn more-btn" @click="toggleMorePanel">
         <i class="fas fa-plus"></i>
       </div>
     </div>
@@ -159,7 +161,34 @@ const toggleStickerPanel = () => {
 <style scoped>
 .chat-input-area { background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.02); }
 .chat-input { flex: 1; border: none; background: var(--bg-color); border-radius: 18px; padding: 10px 15px; outline: none; font-size: 14px; }
-.btn-send { background: var(--text-main); color: #fff; border: none; padding: 0 16px; font-weight: 600; cursor: pointer; border-radius: 18px; }
+
+/* 核心修复：防止挤压的按钮统一样式 */
+.action-icon-btn { display: flex; justify-content: center; align-items: center; flex-shrink: 0; cursor: pointer; color: #666; font-size: 20px; transition: transform 0.2s; }
+.action-icon-btn:active { transform: scale(0.9); }
+
+/* AI 触发星星按钮 */
+.ai-btn { background: #eef2ff; color: #5c8aff; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; }
+
+/* 加号更多按钮 */
+.more-btn { border: 1px solid #ddd; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; }
+
+/* 完美的圆形发送按钮 */
+.btn-send {
+  width: 36px;
+  height: 36px;
+  background: var(--text-main);
+  color: #fff;
+  border: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  font-size: 16px;
+  transition: transform 0.2s;
+}
+.btn-send:active { transform: scale(0.9); }
 
 .bottom-drawer-pages {
   display: flex;
