@@ -105,6 +105,13 @@
         <div class="screen">
           <div class="apps-grid" style="grid-template-columns: repeat(4, 1fr); height: auto;">
             <div class="app-icon" style="aspect-ratio: 1;" @click="activeApp = 'storage'">存储</div>
+            
+            <!-- 新增：时光酒馆 (线下模式记录) -->
+            <div class="app-icon" style="aspect-ratio: 1; background: #f3e5f5; color: #9c27b0; display:flex; flex-direction:column; justify-content:center; align-items:center; font-size:12px; font-weight:600; border-radius:18px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" @click="activeApp = 'offline'">
+              <i class="fas fa-wine-glass-alt" style="font-size:24px; margin-bottom:6px;"></i>
+              时光酒馆
+            </div>
+
           </div>
         </div>
       </div>
@@ -125,6 +132,7 @@
       <AppearanceApp   :show="activeApp === 'appearance'"   @close="activeApp = null" />
       <StorageApp      :show="activeApp === 'storage'"      @close="activeApp = null" />
       <MusicApp        :show="activeApp === 'music'"        @close="activeApp = null" />
+      <OfflineApp      :show="activeApp === 'offline'"      @close="activeApp = null" />
       
     </div>
   </div>
@@ -143,6 +151,7 @@ import AppearanceApp   from '@/apps/appearance/AppearanceApp.vue'
 import StorageApp      from '@/apps/storage/StorageApp.vue'
 import MusicApp        from '@/apps/music/MusicApp.vue'
 import MiniCapsule     from '@/apps/music/components/MiniCapsule.vue' 
+import OfflineApp      from '@/apps/offline/OfflineApp.vue'
 
 const { time, date } = useTime()
 const { userProfile } = useProfile()
@@ -164,6 +173,11 @@ const showSysToast = (msg) => {
 onMounted(async () => {
   window.addEventListener('sys-toast', (e) => {
     showSysToast(e.detail)
+  })
+
+  // 接收从聊天框抛出的开启线下见面事件
+  window.addEventListener('open-offline-meeting', (e) => {
+    activeApp.value = 'offline'
   })
 
   if ('getBattery' in navigator) {
@@ -213,7 +227,6 @@ const getWidgetStyle = (key) => {
 </script>
 
 <style scoped>
-/* 实体占位的状态栏 */
 .system-status-bar {
   position: relative;
   flex-shrink: 0;

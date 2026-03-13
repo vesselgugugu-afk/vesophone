@@ -13,11 +13,15 @@
     |   |-- assets
     |       |-- index-9qaT2RjD.js
     |       |-- index-BhxYOy7v.js
+    |       |-- index-BO-rNdc9.js
     |       |-- index-CKkQOlpP.js
     |       |-- index-DASBRLLz.css
+    |       |-- index-DDrNGO1C.css
     |       |-- index-DHEOfvJh.css
     |       |-- index-Dw5NUDfb.css
+    |       |-- index-eBirwLHZ.css
     |       |-- index-eEbgW1OU.js
+    |       |-- index-JlPk6OJ7.js
     |       |-- index-LthLsWDK.css
     |-- public
     |-- src
@@ -59,7 +63,10 @@
         |   |   |-- StickerManagerPage.vue
         |   |   |-- SummaryPanel.vue
         |   |   |-- components
+        |   |       |-- ChatActionSheet.vue
         |   |       |-- ChatBottomBar.vue
+        |   |       |-- ChatGeneralAlerts.vue
+        |   |       |-- ChatHeader.vue
         |   |       |-- ChatMessageItem.vue
         |   |-- storage
         |   |   |-- StorageApp.vue

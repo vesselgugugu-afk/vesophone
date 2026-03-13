@@ -4,21 +4,15 @@
     <component :is="'style'" v-if="chat.customCss">{{ chat.customCss }}</component>
     <component :is="'style'" v-if="musicState.customLyricCss">{{ musicState.customLyricCss }}</component>
 
-    <div class="app-header" style="padding-top: env(safe-area-inset-top, 40px); min-height: calc(env(safe-area-inset-top, 40px) + 50px);">
-      <div class="btn-back" @click="$emit('exit')" v-if="!isSelectionMode">
-        <i class="fas fa-chevron-left"></i>
-      </div>
-      <div class="btn-back" @click="cancelSelection" v-else>
-        取消
-      </div>
-      
-      <div class="app-title">{{ isSelectionMode ? `已选择 ${selectedIds.length} 项` : chat.title }}</div>
-      
-      <div class="header-right" style="display:flex; gap:15px; align-items:center;">
-        <i v-if="!isSelectionMode" class="fas fa-terminal" style="font-size:14px; color:var(--text-sub);" @click="showDebugPanel = true"></i>
-        <i v-if="!isSelectionMode" class="fas fa-cog" style="font-size:16px; color:var(--text-sub);" @click="showSettings = true"></i>
-      </div>
-    </div>
+    <ChatHeader 
+      :title="chat.title"
+      :isSelectionMode="isSelectionMode"
+      :selectedCount="selectedIds.length"
+      @exit="$emit('exit')"
+      @cancel-selection="cancelSelection"
+      @open-debug="showDebugPanel = true"
+      @open-settings="showSettings = true"
+    />
 
     <div class="chat-area" ref="chatBox" :style="chat.bgImage ? { backgroundImage: `url(${chat.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
       <div v-if="chat.bgImage" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.2); pointer-events:none; z-index:0;"></div>
@@ -68,118 +62,43 @@
       @reroll="handleReRoll"
       @toggle-colisten="toggleColistenFromMenu"
       @clear-quote="quotingText = ''"
+      @start-offline="startOfflineMeeting"
     />
 
-    <div class="ios-alert-mask" v-if="activeMusicCard" @click.self="activeMusicCard = null">
-      <div class="music-action-popup">
-        <div class="music-action-cover" :style="resolvedMusicData ? `background-image:url(${resolvedMusicData.cover})` : ''">
-          <i v-if="resolvingMusic" class="fas fa-spinner fa-spin" style="font-size:30px; color:#fff;"></i>
-        </div>
-        <div class="music-action-info" style="margin-bottom: 20px;">
-          <div style="font-size:18px; font-weight:700; color:#333;">{{ activeMusicCard.name }}</div>
-          <div style="font-size:12px; color:#888;">{{ activeMusicCard.artist }}</div>
-        </div>
-        <div class="music-action-btns">
-          <button class="m-btn m-play" @click="playResolvedMusic" :disabled="!resolvedMusicData">
-            <i class="fas fa-play"></i> 立即播放
-          </button>
-          <button class="m-btn m-add" @click="addResolvedMusicToQueue" :disabled="!resolvedMusicData">
-            <i class="fas fa-plus"></i> 加入歌单
-          </button>
-        </div>
-        <div class="music-action-cancel" @click="activeMusicCard = null">取消</div>
-      </div>
-    </div>
+    <ChatMusicModals 
+      v-model:activeMusicCard="activeMusicCard"
+      v-model:showLocalMusicPicker="showLocalMusicPicker"
+      v-model:showColistenAlert="showColistenAlert"
+      :resolvingMusic="resolvingMusic"
+      :resolvedMusicData="resolvedMusicData"
+      :musicState="musicState"
+      :chatTitle="chat.title"
+      @play-resolved="playResolvedMusic"
+      @add-resolved="addResolvedMusicToQueue"
+      @send-music-share="sendMusicShare"
+      @reply-colisten="replyColisten"
+    />
 
-    <div class="ios-alert-mask" v-if="showLocalMusicPicker" @click.self="showLocalMusicPicker = false">
-      <div class="ios-alert" style="width: 300px; padding: 0;">
-        <div class="ios-alert-title" style="padding: 15px;">从播放列表选取分享</div>
-        <div style="max-height: 250px; overflow-y: auto; text-align: left; padding: 0 15px 15px;">
-           <div v-if="musicState.playlist.length === 0" style="color:#888; font-size:12px; text-align:center; padding: 20px 0;">
-             暂无歌曲，请先去音乐App搜索
-           </div>
-           <div v-for="(song, idx) in musicState.playlist" :key="idx" class="local-music-item" @click="sendMusicShare(song)">
-             <div class="l-name">{{ song.name }}</div>
-             <div class="l-artist">{{ song.artist }}</div>
-           </div>
-        </div>
-        <div class="ios-alert-actions">
-          <div class="ios-alert-btn" @click="showLocalMusicPicker = false">取消</div>
-        </div>
-      </div>
-    </div>
+    <ChatGeneralAlerts 
+      v-model:apiErrorDetails="apiErrorDetails"
+      v-model:pendingAutoSummary="pendingAutoSummary"
+      :alert="alert"
+      :chatTitle="chat.title"
+      @close-alert="alert.show = false"
+      @copy-error="copyErrorJson"
+      @confirm-transfer="confirmReceiveTransfer"
+      @confirm-general="handleAlertConfirm"
+      @confirm-summary="confirmAutoSummary"
+    />
 
-    <div class="ios-alert-mask" v-if="showColistenAlert" @click.self="showColistenAlert = false">
-      <div class="ios-alert">
-        <div class="ios-alert-title">
-          <i class="fas fa-headphones" style="color:#5c8aff;"></i> 一起听邀请
-        </div>
-        <div class="ios-alert-desc" style="margin-top:10px;">
-          {{ chat.title }} 邀请你进入“一起听”状态，是否接受？
-        </div>
-        <div class="ios-alert-actions">
-          <div class="ios-alert-btn danger" @click="replyColisten(false)">直接拒绝</div>
-          <div class="ios-alert-btn bold" @click="replyColisten(true)">接受同频</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="ios-alert-mask" v-if="!!apiErrorDetails" @click.self="apiErrorDetails = null">
-      <div class="ios-alert">
-        <div class="ios-alert-title" style="color:#ff5252; padding-top:20px;">
-          <i class="fas fa-bug"></i> AI 核心过载
-        </div>
-        <div class="ios-alert-desc">大模型接口抛出了异常，回复中断。</div>
-        <div style="padding: 0 15px 15px;">
-          <textarea readonly class="error-textarea">{{ apiErrorDetails }}</textarea>
-        </div>
-        <div class="ios-alert-actions">
-          <div class="ios-alert-btn" @click="copyErrorJson">复制信息</div>
-          <div class="ios-alert-btn bold" @click="apiErrorDetails = null">关闭</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="ios-alert-mask" v-if="alert.show" @click.self="alert.show = false">
-      <div class="ios-alert">
-        <i v-if="alert.type === 'receive_transfer'" class="fas fa-exchange-alt transfer-icon-large"></i>
-        <div class="ios-alert-title">{{ alert.title }}</div>
-        
-        <div class="ios-alert-desc" v-if="alert.type === 'view_recall'">{{ alert.desc }}</div>
-        <div class="ios-alert-desc" v-else-if="alert.desc" style="white-space: pre-wrap; font-size: 14px;">{{ alert.desc }}</div>
-        
-        <div class="ios-alert-inputs" v-if="alert.inputs">
-          <input v-for="(inp, i) in alert.inputs" :key="i" class="ios-alert-input" v-model="inp.value" :placeholder="inp.placeholder" :type="inp.type || 'text'" />
-        </div>
-        
-        <div class="ios-alert-actions">
-          <template v-if="alert.type === 'view_recall'">
-            <div class="ios-alert-btn bold" style="width:100%; border:none;" @click="alert.show = false">我知道了</div>
-          </template>
-          <template v-else-if="alert.type === 'receive_transfer'">
-            <div class="ios-alert-btn" @click="alert.show = false">取消</div>
-            <div class="ios-alert-btn danger" @click="confirmReceiveTransfer('reject')">退回</div>
-            <div class="ios-alert-btn bold" @click="confirmReceiveTransfer('accept')">领取</div>
-          </template>
-          <template v-else>
-            <div class="ios-alert-btn" @click="alert.show = false">取消</div>
-            <div class="ios-alert-btn bold" @click="handleAlertConfirm">确认发送</div>
-          </template>
-        </div>
-      </div>
-    </div>
-
-    <div class="ios-action-sheet-mask" v-if="actionSheet.show" @click.self="actionSheet.show = false">
-      <div class="ios-action-sheet">
-        <div class="ios-action-group">
-          <div class="ios-action-btn" @click="handleQuote">引用</div>
-          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user'" @click="handleEditOwnMsg">编辑</div>
-          <div class="ios-action-btn" v-if="actionSheet.msg.role === 'user' && actionSheet.msg.type !== 'recalled'" @click="handleRecallOwn">撤回</div>
-          <div class="ios-action-btn danger" @click="isSelectionMode = true; actionSheet.show = false">多选</div>
-        </div>
-        <div class="ios-action-cancel" @click="actionSheet.show = false">取消</div>
-      </div>
-    </div>
+    <ChatActionSheet 
+      v-model:show="actionSheet.show"
+      :msg="actionSheet.msg"
+      @quote="handleQuote"
+      @edit="handleEditOwnMsg"
+      @recall="handleRecallOwn"
+      @multi-select="isSelectionMode = true"
+    />
 
     <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
     <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
@@ -191,7 +110,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { usePromptOrder } from '@/composables/usePromptOrder'
 import { useChatSessions } from '@/composables/useChatSessions'
@@ -202,6 +121,10 @@ import { useMusicApi } from '@/composables/useMusicApi'
 
 import ChatMessageItem from './components/ChatMessageItem.vue'
 import ChatBottomBar from './components/ChatBottomBar.vue'
+import ChatHeader from './components/ChatHeader.vue'
+import ChatActionSheet from './components/ChatActionSheet.vue'
+import ChatMusicModals from './components/ChatMusicModals.vue'
+import ChatGeneralAlerts from './components/ChatGeneralAlerts.vue'
 
 import MemoryPanel from './MemoryPanel.vue'
 import ChatSettingsPage from './ChatSettingsPage.vue'
@@ -239,10 +162,23 @@ const activeStatusMsg = ref(null)
 
 const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
+const pendingAutoSummary = ref(null)
+
+const handleOfflineEnded = (e) => {
+  if (e.detail && e.detail.chatId === props.chat.id) {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：你结束了与对方的线下见面，记忆已归档]' })
+    scrollToBottom()
+  }
+}
 
 onMounted(async () => { 
   await loadSessionData(props.chat.id)
   scrollToBottom()
+  window.addEventListener('offline-meeting-ended', handleOfflineEnded)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('offline-meeting-ended', handleOfflineEnded)
 })
 
 watch(() => props.chat.id, async (newId) => { 
@@ -320,6 +256,10 @@ const handleAvatarClick = (clickedMsg) => {
     activeStatusMsg.value = targetMsg;
     showStatusPanel.value = true;
   }
+}
+
+const startOfflineMeeting = () => {
+  window.dispatchEvent(new CustomEvent('open-offline-meeting', { detail: { chat: props.chat } }))
 }
 
 const handleSendText = (txt) => {
@@ -431,7 +371,6 @@ const clearPress = () => {
 
 const handleQuote = () => { 
   quotingText.value = actionSheet.value.msg.content
-  actionSheet.value.show = false 
 }
 
 const handleEditOwnMsg = () => { 
@@ -439,7 +378,6 @@ const handleEditOwnMsg = () => {
   if (newText) {
     updateMessage(props.chat.id, actionSheet.value.msg.id, { content: newText })
   }
-  actionSheet.value.show = false 
 }
 
 const handleRecallOwn = () => { 
@@ -447,7 +385,6 @@ const handleRecallOwn = () => {
     type: 'recalled', 
     oldContent: actionSheet.value.msg.content 
   })
-  actionSheet.value.show = false 
 }
 
 const isSelectionMode = ref(false)
@@ -545,6 +482,8 @@ const confirmReceiveTransfer = (action) => {
 }
 
 const handleReRoll = () => {
+  if (isWaiting.value) return 
+  
   let lastUserIdx = -1
   for (let i = activeMessages.value.length - 1; i >= 0; i--) { 
     if (activeMessages.value[i].role === 'user') { 
@@ -556,10 +495,23 @@ const handleReRoll = () => {
   if (lastUserIdx !== -1 && lastUserIdx < activeMessages.value.length - 1) {
     const idsToDelete = activeMessages.value.slice(lastUserIdx + 1).map(m => m.id)
     removeMessages(props.chat.id, idsToDelete)
-    triggerAiReply()
+    
+    setTimeout(() => {
+      triggerAiReply()
+    }, 150)
   } else {
-    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '没有可重摇的回复' }))
+    triggerAiReply()
   }
+}
+
+const confirmAutoSummary = async () => {
+  if (!pendingAutoSummary.value) return
+  await addMemory(props.chat.id, { 
+    date: new Date().toLocaleString(), 
+    text: pendingAutoSummary.value 
+  })
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '自动总结已成功归档' }))
+  pendingAutoSummary.value = null
 }
 
 const checkAndRunAutoSummary = async () => {
@@ -590,11 +542,7 @@ const checkAndRunAutoSummary = async () => {
       
       if (res.ok) {
         const data = await res.json()
-        await addMemory(props.chat.id, { 
-          date: new Date().toLocaleString(), 
-          text: data.choices[0].message?.content?.trim() || '' 
-        })
-        window.dispatchEvent(new CustomEvent('sys-toast', { detail: '聊天记忆已自动归档' }))
+        pendingAutoSummary.value = data.choices[0].message?.content?.trim() || ''
       }
     } catch (e) { 
       console.error('总结失败', e) 
@@ -650,7 +598,6 @@ const triggerAiReply = async () => {
       })
     })
 
-    // ===== 核心增强：HTTP 错误捕获引擎 =====
     if (!response.ok) {
       let errTxt = `API 拒绝访问: HTTP ${response.status} (${response.statusText})`;
       try {
@@ -668,7 +615,6 @@ const triggerAiReply = async () => {
       } catch (e) {}
       throw new Error(errTxt);
     }
-    // ========================================
     
     const data = await response.json()
     let rawText = data.choices[0].message?.content || ''
@@ -761,29 +707,4 @@ const triggerAiReply = async () => {
 
 <style scoped>
 .chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
-.local-music-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
-.local-music-item:active { background: #f9f9f9; }
-.l-name { font-size: 14px; font-weight: 600; color: #333; }
-.l-artist { font-size: 11px; color: #888; margin-top: 2px; }
-.music-action-popup { background: #fff; border-radius: 24px; padding: 25px 20px; width: max-content; min-width: 260px; max-width: 85vw; box-sizing: border-box; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-.music-action-cover { width: 140px; height: 140px; border-radius: 16px; background: #e0e0e0; margin: 0 auto; background-size: cover; background-position: center; box-shadow: 0 10px 20px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; }
-.m-btn { flex: 1; padding: 12px 0; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
-.m-play { background: #5c8aff; color: #fff; }
-.m-add { background: #f4f5f7; color: #333; }
-.m-btn:disabled { opacity: 0.5; pointer-events: none; }
-.music-action-cancel { margin-top: 15px; font-size: 12px; color: #888; cursor: pointer; padding: 5px; }
-.music-action-btns { display: flex; gap: 10px; width: 100%; }
-.ios-alert-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-.ios-alert { background: rgba(255,255,255,0.95); width: 280px; border-radius: 18px; text-align: center; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-.ios-alert-title { font-size: 16px; font-weight: 600; padding: 20px 20px 5px; color: #000; }
-.ios-alert-desc { font-size: 13px; color: #555; padding: 0 20px 15px; }
-.ios-alert-inputs { padding: 0 15px 15px; display: flex; flex-direction: column; gap: 8px; }
-.ios-alert-input { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 10px; font-size: 13px; outline: none; }
-.ios-alert-actions { display: flex; border-top: 1px solid rgba(0,0,0,0.1); }
-.ios-alert-btn { flex: 1; padding: 12px 0; font-size: 16px; color: #007aff; cursor: pointer; border-right: 1px solid rgba(0,0,0,0.1); }
-.ios-alert-btn:last-child { border-right: none; }
-.ios-alert-btn:active { background: rgba(0,0,0,0.05); }
-.ios-alert-btn.bold { font-weight: 600; }
-.ios-alert-btn.danger { color: #ff3b30; }
-.error-textarea { width: 100%; height: 150px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 10px; font-size: 12px; color: #ff5252; outline: none; resize: none; font-family: monospace; }
 </style>

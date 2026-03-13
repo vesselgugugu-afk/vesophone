@@ -29,7 +29,6 @@
       </div>
     </div>
 
-    <!-- 高级多分组表情包抽屉 -->
     <div v-if="showStickerPanel" class="sticker-panel-wrapper">
       <div v-if="stickerGroups.length === 0" style="text-align:center; color:#888; font-size:12px; margin-top:50px;">
         暂无全局表情包。<br>请在外观或设置的全局管理中添加。
@@ -82,7 +81,7 @@
           <div class="icon-bg" style="background:#eef2ff; color:#5c8aff;"><i class="fas fa-magic"></i></div><span style="color:#5c8aff; font-weight:600;">聊天总结</span>
         </div>
         <div class="drawer-item" @click="$emit('reroll')">
-          <div class="icon-bg" style="background:#fff3f3; color:#ff5252;"><i class="fas fa-dice"></i></div><span style="color:#ff5252; font-weight:600;">重摇回复</span>
+          <div class="icon-bg" style="background:#fff3f3; color:#ff5252;"><i class="fas fa-dice"></i></div><span style="color:#ff5252; font-weight:600;">重roll回复</span>
         </div>
       </div>
       
@@ -96,6 +95,15 @@
             {{ musicState.coListenCharId === chat.id ? '结束同频' : '邀请一起听' }}
           </span>
         </div>
+        
+        <!-- 新增线下见面入口 -->
+        <div class="drawer-item" @click="$emit('start-offline')">
+          <div class="icon-bg" style="background:#f3e5f5; color:#9c27b0;">
+            <i class="fas fa-coffee"></i>
+          </div>
+          <span style="color:#9c27b0; font-weight:600;">线下见面</span>
+        </div>
+
       </div>
     </div>
   </div>
@@ -115,7 +123,7 @@ const props = defineProps({
 const emit = defineEmits([
   'send-text', 'send-sticker', 'trigger-ai', 'delete-selected',
   'open-alert', 'open-local-music', 'open-memory', 'open-summary',
-  'reroll', 'toggle-colisten', 'clear-quote'
+  'reroll', 'toggle-colisten', 'clear-quote', 'start-offline'
 ])
 
 const { stickerGroups } = useStickers()
@@ -162,17 +170,12 @@ const toggleStickerPanel = () => {
 .chat-input-area { background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.02); }
 .chat-input { flex: 1; border: none; background: var(--bg-color); border-radius: 18px; padding: 10px 15px; outline: none; font-size: 14px; }
 
-/* 核心修复：防止挤压的按钮统一样式 */
 .action-icon-btn { display: flex; justify-content: center; align-items: center; flex-shrink: 0; cursor: pointer; color: #666; font-size: 20px; transition: transform 0.2s; }
 .action-icon-btn:active { transform: scale(0.9); }
 
-/* AI 触发星星按钮 */
 .ai-btn { background: #eef2ff; color: #5c8aff; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; }
-
-/* 加号更多按钮 */
 .more-btn { border: 1px solid #ddd; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; }
 
-/* 完美的圆形发送按钮 */
 .btn-send {
   width: 36px;
   height: 36px;
