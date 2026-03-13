@@ -1,7 +1,6 @@
 <template>
   <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; position:relative;">
     
-    <!-- 注入聊天专属 CSS 和 全局歌词卡片 CSS -->
     <component :is="'style'" v-if="chat.customCss">{{ chat.customCss }}</component>
     <component :is="'style'" v-if="musicState.customLyricCss">{{ musicState.customLyricCss }}</component>
 
@@ -39,6 +38,7 @@
           @click-colisten="handleColistenReqClick"
           @view-recall="viewRecall"
           @toggle-voice="(m) => { m.showText = !m.showText }"
+          @click-avatar="handleAvatarClick"
         />
       </template>
 
@@ -52,7 +52,11 @@
       </div>
     </div>
 
+    <div v-if="isBlocked" style="padding: 20px; text-align: center; color: #888; background: #f4f5f7; font-size: 13px; font-weight:600; padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 10;">
+      对方已被拉黑，无法发送消息
+    </div>
     <ChatBottomBar 
+      v-else
       :chat="chat"
       :musicState="musicState"
       :isSelectionMode="isSelectionMode"
@@ -70,7 +74,6 @@
       @clear-quote="quotingText = ''"
     />
 
-    <!-- 修复防挤压的音乐推荐卡片弹窗 -->
     <div class="ios-alert-mask" v-if="activeMusicCard" @click.self="activeMusicCard = null">
       <div class="music-action-popup">
         <div class="music-action-cover" :style="resolvedMusicData ? `background-image:url(${resolvedMusicData.cover})` : ''">
@@ -92,7 +95,6 @@
       </div>
     </div>
 
-    <!-- 本地音乐拾取器 -->
     <div class="ios-alert-mask" v-if="showLocalMusicPicker" @click.self="showLocalMusicPicker = false">
       <div class="ios-alert" style="width: 300px; padding: 0;">
         <div class="ios-alert-title" style="padding: 15px;">从播放列表选取分享</div>
@@ -111,7 +113,6 @@
       </div>
     </div>
 
-    <!-- 一起听邀请弹窗 -->
     <div class="ios-alert-mask" v-if="showColistenAlert" @click.self="showColistenAlert = false">
       <div class="ios-alert">
         <div class="ios-alert-title">
@@ -127,7 +128,6 @@
       </div>
     </div>
 
-    <!-- AI 报错弹窗 -->
     <div class="ios-alert-mask" v-if="!!apiErrorDetails" @click.self="apiErrorDetails = null">
       <div class="ios-alert">
         <div class="ios-alert-title" style="color:#ff5252; padding-top:20px;">
@@ -144,7 +144,6 @@
       </div>
     </div>
 
-    <!-- 交互提示弹窗 (转账等) -->
     <div class="ios-alert-mask" v-if="alert.show" @click.self="alert.show = false">
       <div class="ios-alert">
         <i v-if="alert.type === 'receive_transfer'" class="fas fa-exchange-alt transfer-icon-large"></i>
@@ -174,7 +173,6 @@
       </div>
     </div>
 
-    <!-- Action Sheet 底部菜单 -->
     <div class="ios-action-sheet-mask" v-if="actionSheet.show" @click.self="actionSheet.show = false">
       <div class="ios-action-sheet">
         <div class="ios-action-group">
@@ -187,11 +185,17 @@
       </div>
     </div>
 
-    <!-- 功能面板 -->
     <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
-    <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
+    <ChatSettingsPage 
+      :show="showSettings" 
+      :chat="chat" 
+      @close="showSettings = false" 
+      @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" 
+      @delete-chat="$emit('exit')"
+    />
     <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
     <SummaryPanel :show="showSummaryPanel" :chat="chat" @close="showSummaryPanel = false" />
+    <StatusPanel :show="showStatusPanel" :msg="activeStatusMsg" :chat="chat" @close="showStatusPanel = false" />
 
   </div>
 </template>
@@ -213,6 +217,7 @@ import MemoryPanel from './MemoryPanel.vue'
 import ChatSettingsPage from './ChatSettingsPage.vue'
 import DebugPanel from './DebugPanel.vue'
 import SummaryPanel from './SummaryPanel.vue'
+import StatusPanel from './StatusPanel.vue'
 
 const props = defineProps({ 
   chat: { type: Object, required: true } 
@@ -239,8 +244,17 @@ const showLocalMusicPicker = ref(false)
 const showColistenAlert = ref(false)
 const apiErrorDetails = ref(null)
 
+const showStatusPanel = ref(false)
+const activeStatusMsg = ref(null)
+
 const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
+
+const isBlocked = computed(() => {
+  if (props.chat.isGroup || props.chat.participants.length === 0) return false;
+  const char = getCharById(props.chat.participants[0].id);
+  return char?.isBlocked || false;
+})
 
 onMounted(async () => { 
   await loadSessionData(props.chat.id)
@@ -283,6 +297,45 @@ const getAiAvatarInitials = () => {
     return ''
   }
   return props.chat.title ? props.chat.title.charAt(0) : 'A'
+}
+
+const buildRegexSafe = (patternStr) => {
+  if (!patternStr) return null;
+  let flags = '';
+  let pattern = patternStr;
+  const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
+  if (match) {
+    pattern = match[1];
+    flags = match[2];
+  } else if (patternStr.includes('\\\\[')) {
+    pattern = pattern.replace(/\\\\/g, '\\');
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch(e) {
+    return null;
+  }
+}
+
+const handleAvatarClick = (clickedMsg) => {
+  if (clickedMsg.role === 'ai') {
+    let targetMsg = clickedMsg;
+    const regex = buildRegexSafe(props.chat.settings?.regexPattern);
+    
+    if (regex) {
+      const aiMsgs = activeMessages.value.filter(m => m.role === 'ai');
+      for (let i = aiMsgs.length - 1; i >= 0; i--) {
+        const textToTest = aiMsgs[i].rawStatus || aiMsgs[i].content || '';
+        if (textToTest.match(regex)) {
+          targetMsg = aiMsgs[i];
+          break;
+        }
+      }
+    }
+    
+    activeStatusMsg.value = targetMsg;
+    showStatusPanel.value = true;
+  }
 }
 
 const handleSendText = (txt) => {
@@ -507,7 +560,6 @@ const confirmReceiveTransfer = (action) => {
   scrollToBottom()
 }
 
-// 核心修复：重摇逻辑寻找最后一个 User 消息，并干掉它之后所有的 AI 消息（一整组）
 const handleReRoll = () => {
   let lastUserIdx = -1
   for (let i = activeMessages.value.length - 1; i >= 0; i--) { 
@@ -579,7 +631,27 @@ const triggerAiReply = async () => {
   try {
     if (!apiKey.value) throw new Error('未设置 API 密钥')
     
-    const apiMessages = buildApiMessages(props.chat, activeMessages.value, activeMemories.value)
+    const contextLimit = Number(props.chat.settings?.statusContextCount ?? 1);
+    let aiMsgCount = 0;
+    const messagesForApi = activeMessages.value.map(m => ({ ...m }));
+    
+    for (let i = messagesForApi.length - 1; i >= 0; i--) {
+      const msg = messagesForApi[i];
+      if (msg.role === 'ai') {
+        if (msg.rawStatus) {
+          if (aiMsgCount < contextLimit) {
+            msg.content = msg.content + '\n\n' + msg.rawStatus;
+          }
+        }
+        aiMsgCount++;
+      }
+    }
+
+    const apiMessages = buildApiMessages(props.chat, messagesForApi, activeMemories.value)
+    
+    if (props.chat.settings?.promptSuffix && props.chat.settings.promptSuffix.trim() !== '') {
+      apiMessages.push({ role: 'system', content: props.chat.settings.promptSuffix })
+    }
     
     apiLog.value.reqTokens = Math.ceil(apiMessages.map(m => m.content).join('').length / 4)
     apiLog.value.req = JSON.parse(JSON.stringify(apiMessages))
@@ -625,56 +697,61 @@ const triggerAiReply = async () => {
     rawText = rawText.replace(statusRegex, '').trim()
 
     const msgRegex = /<msg(?:[^>]*)>([\s\S]*?)<\/msg>/gi
-    let hasMsg = false
+    const matches = [...rawText.matchAll(msgRegex)]
 
-    while ((match = msgRegex.exec(rawText)) !== null) {
-      hasMsg = true
-      const attrRegex = /(\w+)="([^"]+)"/g
-      let attrs = {}
-      let attrMatch
+    if (matches.length > 0) {
+      const trailingText = rawText.replace(msgRegex, '').trim()
       
-      while ((attrMatch = attrRegex.exec(match[0])) !== null) {
-        attrs[attrMatch[1]] = attrMatch[2]
-      }
-      
-      const mType = attrs.type || 'text'
-      const mRef = attrs.ref || ''
-      const mAmount = attrs.amount || ''
-      const mAction = attrs.action || ''
-      const mName = attrs.name || ''
-      const mArtist = attrs.artist || ''
-      const mContent = match[1].trim()
-      
-      const tempId = Date.now() + Math.random()
+      matches.forEach((m, index) => {
+        const attrRegex = /(\w+)="([^"]+)"/g
+        let attrs = {}
+        let attrMatch
+        while ((attrMatch = attrRegex.exec(m[0])) !== null) {
+          attrs[attrMatch[1]] = attrMatch[2]
+        }
+        
+        const mType = attrs.type || 'text'
+        const mRef = attrs.ref || ''
+        const mAmount = attrs.amount || ''
+        const mAction = attrs.action || ''
+        const mName = attrs.name || ''
+        const mArtist = attrs.artist || ''
+        let mContent = m[1].trim()
+        
+        const tempId = Date.now() + Math.random()
+        
+        const baseMsgObj = { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent }
+        if (index === matches.length - 1 && trailingText) {
+          baseMsgObj.rawStatus = trailingText;
+        }
 
-      if (mType === 'recall') {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'recall_pending', content: mContent })
-        setTimeout(() => { 
-          updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) 
-        }, 1500)
-      } else if (mType === 'transfer') {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'transfer', amount: mAmount, content: mContent, status: 'pending' })
-      } else if (mType === 'transfer_reply') {
-        const pendingMsg = activeMessages.value.slice().reverse().find(m => m.type === 'transfer' && m.status === 'pending')
-        if (pendingMsg) {
-          updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+        if (mType === 'recall') {
+          pushMessage(props.chat.id, { ...baseMsgObj, type: 'recall_pending' })
+          setTimeout(() => { 
+            updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) 
+          }, 1500)
+        } else if (mType === 'transfer') {
+          pushMessage(props.chat.id, { ...baseMsgObj, amount: mAmount, status: 'pending' })
+        } else if (mType === 'transfer_reply') {
+          const pendingMsg = activeMessages.value.slice().reverse().find(m => m.type === 'transfer' && m.status === 'pending')
+          if (pendingMsg) {
+            updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+          }
+          pushMessage(props.chat.id, { role: 'system', type: 'text', content: mAction === 'accept' ? '对方已领取转账' : '对方已退回转账' })
+        } else if (mType === 'voice') {
+          pushMessage(props.chat.id, { ...baseMsgObj, showText: false })
+        } else if (mType === 'music_share' || mType === 'music_cmd') {
+          pushMessage(props.chat.id, { ...baseMsgObj, name: mName, artist: mArtist })
+          if (mType === 'music_cmd' && mAction === 'play' && mName) {
+            playSpecific({ name: mName, artist: mArtist })
+          }
+        } else if (mType === 'music_colisten_req') {
+          pushMessage(props.chat.id, { ...baseMsgObj, type: 'music_colisten_req' })
+        } else {
+          pushMessage(props.chat.id, baseMsgObj)
         }
-        pushMessage(props.chat.id, { role: 'system', type: 'text', content: mAction === 'accept' ? '对方已领取转账' : '对方已退回转账' })
-      } else if (mType === 'voice') {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'voice', content: mContent, showText: false })
-      } else if (mType === 'music_share' || mType === 'music_cmd') {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, name: mName, artist: mArtist, content: mContent })
-        if (mType === 'music_cmd' && mAction === 'play' && mName) {
-          playSpecific({ name: mName, artist: mArtist })
-        }
-      } else if (mType === 'music_colisten_req') {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: 'music_colisten_req', content: mContent })
-      } else {
-        pushMessage(props.chat.id, { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent })
-      }
-    }
-    
-    if (!hasMsg && rawText.length > 0) {
+      })
+    } else if (rawText.length > 0) {
       pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
     }
     
@@ -691,201 +768,30 @@ const triggerAiReply = async () => {
 </script>
 
 <style scoped>
-.chat-area { 
-  flex: 1; 
-  padding: 20px; 
-  overflow-y: auto; 
-  display: flex; 
-  flex-direction: column; 
-  background: var(--bg-color); 
-  position: relative; 
-}
-
-.local-music-item { 
-  padding: 10px 0; 
-  border-bottom: 1px solid #f0f0f0; 
-  cursor: pointer; 
-}
-.local-music-item:active { 
-  background: #f9f9f9; 
-}
-.l-name { 
-  font-size: 14px; 
-  font-weight: 600; 
-  color: #333; 
-}
-.l-artist { 
-  font-size: 11px; 
-  color: #888; 
-  margin-top: 2px; 
-}
-
-/* 核心修复：动态防挤压推荐卡片样式 */
-.music-action-popup {
-  background: #fff;
-  border-radius: 24px;
-  padding: 25px 20px;
-  width: max-content;
-  min-width: 260px;
-  max-width: 85vw;
-  box-sizing: border-box;
-  text-align: center;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-}
-
-.music-action-cover {
-  width: 140px;
-  height: 140px;
-  border-radius: 16px;
-  background: #e0e0e0;
-  margin: 0 auto;
-  background-size: cover;
-  background-position: center;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.m-btn { 
-  flex: 1; 
-  padding: 12px 0; 
-  border: none; 
-  border-radius: 12px; 
-  font-weight: 600; 
-  font-size: 14px; 
-  cursor: pointer; 
-  white-space: nowrap; 
-}
-
-.m-play { 
-  background: #5c8aff; 
-  color: #fff; 
-}
-
-.m-add { 
-  background: #f4f5f7; 
-  color: #333; 
-}
-
-.m-btn:disabled { 
-  opacity: 0.5; 
-  pointer-events: none; 
-}
-
-.music-action-cancel { 
-  margin-top: 15px; 
-  font-size: 12px; 
-  color: #888; 
-  cursor: pointer; 
-  padding: 5px; 
-}
-
-.music-action-btns { 
-  display: flex; 
-  gap: 10px; 
-  width: 100%; 
-}
-
-.ios-alert-mask { 
-  position: fixed; 
-  top: 0; 
-  left: 0; 
-  right: 0; 
-  bottom: 0; 
-  background: rgba(0,0,0,0.5); 
-  z-index: 999999; 
-  display: flex; 
-  justify-content: center; 
-  align-items: center; 
-  backdrop-filter: blur(5px); 
-}
-
-.ios-alert { 
-  background: rgba(255,255,255,0.95); 
-  width: 280px; 
-  border-radius: 18px; 
-  text-align: center; 
-  overflow: hidden; 
-  display: flex; 
-  flex-direction: column; 
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2); 
-}
-
-.ios-alert-title { 
-  font-size: 16px; 
-  font-weight: 600; 
-  padding: 20px 20px 5px; 
-  color: #000; 
-}
-
-.ios-alert-desc { 
-  font-size: 13px; 
-  color: #555; 
-  padding: 0 20px 15px; 
-}
-
-.ios-alert-inputs { 
-  padding: 0 15px 15px; 
-  display: flex; 
-  flex-direction: column; 
-  gap: 8px; 
-}
-
-.ios-alert-input { 
-  width: 100%; 
-  box-sizing: border-box; 
-  background: rgba(0,0,0,0.05); 
-  border: 1px solid rgba(0,0,0,0.1); 
-  border-radius: 8px; 
-  padding: 10px; 
-  font-size: 13px; 
-  outline: none; 
-}
-
-.ios-alert-actions { 
-  display: flex; 
-  border-top: 1px solid rgba(0,0,0,0.1); 
-}
-
-.ios-alert-btn { 
-  flex: 1; 
-  padding: 12px 0; 
-  font-size: 16px; 
-  color: #007aff; 
-  cursor: pointer; 
-  border-right: 1px solid rgba(0,0,0,0.1); 
-}
-
-.ios-alert-btn:last-child { 
-  border-right: none; 
-}
-
-.ios-alert-btn:active { 
-  background: rgba(0,0,0,0.05); 
-}
-
-.ios-alert-btn.bold { 
-  font-weight: 600; 
-}
-
-.ios-alert-btn.danger { 
-  color: #ff3b30; 
-}
-
-.error-textarea { 
-  width: 100%; 
-  height: 150px; 
-  background: rgba(0,0,0,0.05); 
-  border: 1px solid rgba(0,0,0,0.1); 
-  border-radius: 8px; 
-  padding: 10px; 
-  font-size: 12px; 
-  color: #ff5252; 
-  outline: none; 
-  resize: none; 
-  font-family: monospace; 
-}
+.chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
+.local-music-item { padding: 10px 0; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+.local-music-item:active { background: #f9f9f9; }
+.l-name { font-size: 14px; font-weight: 600; color: #333; }
+.l-artist { font-size: 11px; color: #888; margin-top: 2px; }
+.music-action-popup { background: #fff; border-radius: 24px; padding: 25px 20px; width: max-content; min-width: 260px; max-width: 85vw; box-sizing: border-box; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+.music-action-cover { width: 140px; height: 140px; border-radius: 16px; background: #e0e0e0; margin: 0 auto; background-size: cover; background-position: center; box-shadow: 0 10px 20px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; }
+.m-btn { flex: 1; padding: 12px 0; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.m-play { background: #5c8aff; color: #fff; }
+.m-add { background: #f4f5f7; color: #333; }
+.m-btn:disabled { opacity: 0.5; pointer-events: none; }
+.music-action-cancel { margin-top: 15px; font-size: 12px; color: #888; cursor: pointer; padding: 5px; }
+.music-action-btns { display: flex; gap: 10px; width: 100%; }
+.ios-alert-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+.ios-alert { background: rgba(255,255,255,0.95); width: 280px; border-radius: 18px; text-align: center; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+.ios-alert-title { font-size: 16px; font-weight: 600; padding: 20px 20px 5px; color: #000; }
+.ios-alert-desc { font-size: 13px; color: #555; padding: 0 20px 15px; }
+.ios-alert-inputs { padding: 0 15px 15px; display: flex; flex-direction: column; gap: 8px; }
+.ios-alert-input { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 10px; font-size: 13px; outline: none; }
+.ios-alert-actions { display: flex; border-top: 1px solid rgba(0,0,0,0.1); }
+.ios-alert-btn { flex: 1; padding: 12px 0; font-size: 16px; color: #007aff; cursor: pointer; border-right: 1px solid rgba(0,0,0,0.1); }
+.ios-alert-btn:last-child { border-right: none; }
+.ios-alert-btn:active { background: rgba(0,0,0,0.05); }
+.ios-alert-btn.bold { font-weight: 600; }
+.ios-alert-btn.danger { color: #ff3b30; }
+.error-textarea { width: 100%; height: 150px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 10px; font-size: 12px; color: #ff5252; outline: none; resize: none; font-family: monospace; }
 </style>

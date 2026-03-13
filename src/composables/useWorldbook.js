@@ -36,12 +36,12 @@ export function useWorldbook() {
   const saveWb = (form) => {
     if (!form.title) return false
     const newWb = {
-      id: Date.now(),
+      id: Date.now() + Math.random(),
       title: form.title,
       group: form.group || '通用',
       content: form.content,
       enabled: true,
-      injectRole: 'system'
+      injectRole: form.injectRole || 'system'
     }
     worldbooks.value.push(newWb)
     wbOrder.value.push(newWb.id)
@@ -68,6 +68,51 @@ export function useWorldbook() {
     wbOrder.value = newOrder
   }
 
+  // 核心新增：整组删除
+  const deleteGroup = (groupName) => {
+    const idsToDelete = worldbooks.value.filter(w => (w.group || '通用') === groupName).map(w => w.id)
+    worldbooks.value = worldbooks.value.filter(w => !idsToDelete.includes(w.id))
+    wbOrder.value = wbOrder.value.filter(id => !idsToDelete.includes(id))
+  }
+
+  // 核心新增：导出 JSON
+  const exportGroupJson = (groupName) => {
+    let items = []
+    if (groupName === 'All') {
+      items = worldbooks.value
+    } else {
+      items = worldbooks.value.filter(w => (w.group || '通用') === groupName)
+    }
+    return JSON.stringify(items, null, 2)
+  }
+
+  // 核心新增：导入 JSON
+  const importGroupJson = (jsonStr) => {
+    try {
+      const items = JSON.parse(jsonStr)
+      if (!Array.isArray(items)) return false
+      let successCount = 0
+      items.forEach(item => {
+        if (item.title && item.content) {
+          const newId = Date.now() + Math.random()
+          worldbooks.value.push({
+            id: newId,
+            title: item.title,
+            group: item.group || '通用',
+            content: item.content,
+            enabled: item.enabled ?? false,
+            injectRole: item.injectRole || 'system'
+          })
+          wbOrder.value.push(newId)
+          successCount++
+        }
+      })
+      return successCount
+    } catch (e) {
+      return false
+    }
+  }
+
   return {
     worldbooks,
     wbGroups,
@@ -76,6 +121,9 @@ export function useWorldbook() {
     enabledWorldbooks,
     saveWb,
     deleteWb,
-    moveWbOrder
+    moveWbOrder,
+    deleteGroup,
+    exportGroupJson,
+    importGroupJson
   }
 }

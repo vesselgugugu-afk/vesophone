@@ -8,7 +8,8 @@
       <div class="music-header">
         <button class="icon-btn" @click="$emit('close')"><i class="fas fa-chevron-down"></i></button>
         <div class="header-info">
-          <div v-if="musicState.coListenCharId" class="co-listen-badge"><i class="fas fa-headphones"></i> 一起听</div>
+          <!-- 核心修复：正确显示动态计算出的同频聊天名字 -->
+          <div v-if="musicState.coListenCharId" class="co-listen-badge"><i class="fas fa-headphones"></i> 一起听: {{ coListenName }}</div>
           <div v-else style="font-size:12px; color:#aaa; font-weight:600; letter-spacing:1px;">AERO MUSIC</div>
         </div>
         <button class="icon-btn" @click="activeModal = 'search'"><i class="fas fa-search"></i></button>
@@ -45,10 +46,9 @@
           <button class="ctrl-btn sub" @click="activeModal = 'playlist'"><i class="fas fa-list-ul"></i></button>
         </div>
 
-        <!-- 核心：5个按钮并排，加入歌词样式面板 -->
         <div class="action-row">
           <button class="action-btn" @click="activeModal = 'coListen'" :class="{'active': musicState.coListenCharId}">
-            <i class="fas fa-user-friends"></i> {{ musicState.coListenCharId ? '一起听中' : '邀请同频' }}
+            <i class="fas fa-user-friends"></i> {{ musicState.coListenCharId ? '同频中' : '邀请同频' }}
           </button>
           <button class="action-btn" @click="activeModal = 'library'"><i class="fas fa-folder-open"></i> 歌单库</button>
           <button class="action-btn" @click="activeModal = 'stats'"><i class="fas fa-chart-bar"></i> 记录</button>
@@ -108,7 +108,6 @@
       <PlaylistDrawer :show="activeModal === 'playlist'" @close="activeModal = null" />
       <LibraryModal   :show="activeModal === 'library'"  @close="activeModal = null" />
       <StatsModal     :show="activeModal === 'stats'"    @close="activeModal = null" />
-      <!-- 挂载新面板 -->
       <LyricCssPanel  :show="activeModal === 'lyricCss'" @close="activeModal = null" />
 
     </div>
@@ -146,6 +145,15 @@ const customLrcMsg = ref('')
 const showIslandSettings = ref(false)
 const islandSettings = ref({ mode: 'capsule', scale: 1.0, opacity: 0.95 })
 
+// 核心修复：根据 coListenCharId 动态查找会话标题
+const coListenName = computed(() => {
+  if (!musicState.coListenCharId) return ''
+  if (!sessions || !sessions.value) return '未知会话'
+  const chat = sessions.value.find(c => c.id === musicState.coListenCharId)
+  if (chat) return chat.title
+  return '未知会话'
+})
+
 const openIslandSettings = () => { try { const s = localStorage.getItem('islandSettings'); if (s) islandSettings.value = JSON.parse(s) } catch(e) {}; showIslandSettings.value = true }
 const saveIslandSettings = () => { localStorage.setItem('islandSettings', JSON.stringify(islandSettings.value)); window.dispatchEvent(new CustomEvent('update-island-settings', { detail: islandSettings.value })) }
 
@@ -181,7 +189,7 @@ const confirmShareLrc = () => {
 .icon-btn { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; opacity: 0.8; transition: 0.2s; }
 .icon-btn:hover { opacity: 1; transform: scale(1.1); }
 .header-info { flex: 1; display: flex; justify-content: center; }
-.co-listen-badge { background: rgba(29, 209, 161, 0.2); color: #1dd1a1; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid rgba(29, 209, 161, 0.3); }
+.co-listen-badge { background: rgba(29, 209, 161, 0.2); color: #1dd1a1; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid rgba(29, 209, 161, 0.3); max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .main-view { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; }
 .disc-wrapper { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); position: absolute; }

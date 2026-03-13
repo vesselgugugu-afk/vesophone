@@ -16,7 +16,7 @@
       <div class="msg-checkbox" :class="{ 'checked': isSelected }" v-if="isSelectionMode"></div>
 
       <div :class="['msg-row', msg.role === 'user' ? 'is-user' : 'is-ai']">
-        <div class="msg-avatar" :style="avatarStyle">{{ avatarInitials }}</div>
+        <div class="msg-avatar" :style="avatarStyle" @click="$emit('click-avatar', msg)">{{ avatarInitials }}</div>
         
         <div class="msg-content-wrapper">
           <div v-if="msg.refText" class="msg-quote">
@@ -44,7 +44,6 @@
             </div>
           </template>
 
-          <!-- 推荐歌曲专属卡片 (点击弹窗提取封面) -->
           <template v-else-if="msg.type === 'music_share'">
             <div class="msg-bubble is-music" 
                  @click.stop="$emit('click-music-share', msg)" 
@@ -66,7 +65,6 @@
             </div>
           </template>
 
-          <!-- 强制切歌专属播报卡片 (红色 DJ 主题) -->
           <template v-else-if="msg.type === 'music_cmd'">
             <div class="msg-bubble is-music-cmd"
                  @touchstart="$emit('press', msg)" 
@@ -80,7 +78,6 @@
             </div>
           </template>
 
-          <!-- 歌词回忆杀气泡 -->
           <template v-else-if="msg.type === 'lyric_share'">
             <div class="msg-bubble is-lyric" 
                  @touchstart="$emit('press', msg)" 
@@ -94,7 +91,6 @@
             </div>
           </template>
 
-          <!-- AI一起听邀请卡片 -->
           <template v-else-if="msg.type === 'music_colisten_req'">
             <div class="msg-bubble is-colisten-req" @click.stop="$emit('click-colisten', msg)">
               <div style="font-weight:600; margin-bottom:4px;">
@@ -134,7 +130,11 @@
                  @touchend="$emit('clear-press')" 
                  @mousedown="$emit('press', msg)" 
                  @mouseup="$emit('clear-press')">
-              <span v-html="msg.content"></span>
+              
+              <span v-if="displayContent" v-html="displayContent"></span>
+              
+              <span v-else style="color:var(--text-sub); font-style:italic; font-size:12px; opacity:0.6;">[ 状态协议更新 ]</span>
+              
             </div>
           </template>
           
@@ -163,7 +163,7 @@ const props = defineProps({
   showTime: Boolean
 })
 
-const emit = defineEmits(['toggle-select', 'press', 'clear-press', 'click-transfer', 'click-music-share', 'click-colisten', 'view-recall', 'toggle-voice'])
+const emit = defineEmits(['toggle-select', 'press', 'clear-press', 'click-transfer', 'click-music-share', 'click-colisten', 'view-recall', 'toggle-voice', 'click-avatar'])
 
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
@@ -177,6 +177,51 @@ const formatTime = (msg) => {
   const mins = d.getMinutes().toString().padStart(2, '0')
   return `${hours}:${mins}`
 }
+
+const buildRegexSafe = (patternStr) => {
+  if (!patternStr) return null;
+  let flags = '';
+  let pattern = patternStr;
+  const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
+  if (match) {
+    pattern = match[1];
+    flags = match[2].includes('g') ? match[2] : match[2] + 'g';
+  } else if (patternStr.includes('\\\\[')) {
+    pattern = pattern.replace(/\\\\/g, '\\');
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch(e) {
+    return null;
+  }
+}
+
+// 核心：无差别的历史垃圾清道夫！
+const displayContent = computed(() => {
+  if (props.msg.type !== 'text' && props.msg.type !== 'quote' && props.msg.type) return props.msg.content
+  let txt = props.msg.content || ''
+  
+  if (props.msg.role === 'ai') {
+    // 1. 根据当前的正则进行精确抹除
+    if (props.chat?.settings?.regexPattern) {
+      try {
+        const baseRegex = buildRegexSafe(props.chat.settings.regexPattern);
+        if (baseRegex) txt = txt.replace(baseRegex, '').trim()
+      } catch (e) {}
+    }
+
+    // 2. 清道夫行动：哪怕正则没配上，也强行干掉常见残留结构！防止历史旧账污染气泡
+    // 吃掉 ```xml ... ``` 块
+    txt = txt.replace(/```[\s\S]*?```/g, '');
+    // 吃掉旧版 <status_xxx> ... </status_xxx> 格式
+    txt = txt.replace(/<[a-zA-Z0-9_]+>\s*\[[\s\S]*?\]\s*<\/[a-zA-Z0-9_]+>/g, '');
+    // 吃掉大量方括号组成的键值对长块 [Name=... Status=...]
+    txt = txt.replace(/\[\s*(?:[a-zA-Z0-9_]+[=|\|][\s\S]*?){2,}\]/g, '');
+
+    txt = txt.trim()
+  }
+  return txt
+})
 
 const getActiveUserPersona = () => {
   if (props.chat.boundPersonaId) return personas.value.find(p => p.id === props.chat.boundPersonaId) || null
@@ -227,70 +272,21 @@ const stickerUrl = computed(() => {
 </script>
 
 <style scoped>
-/* 所有气泡的独立样式 */
-.msg-bubble.is-music {
-  background: #2c2c35 !important;
-  color: #fff !important;
-  border-radius: 16px;
-  padding: 12px;
-  min-width: 220px;
-  max-width: 260px;
-  cursor: pointer;
-  text-align: left;
-  border: 1px solid rgba(255,255,255,0.05);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
-  transition: transform 0.2s;
-}
-.msg-bubble.is-music:active {
-  transform: scale(0.98);
-}
-.msg-row.is-user .msg-bubble.is-music {
-  background: #1dd1a1 !important; 
-  color: #000 !important;
-}
-
-.music-card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
-  padding-bottom: 10px;
-  margin-bottom: 8px;
-}
-.msg-row.is-user .music-card-header {
-  border-bottom: 1px solid rgba(0,0,0,0.1);
-}
-
-.music-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: #5c8aff;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 16px;
-  color: #fff;
-  flex-shrink: 0;
-}
+.msg-bubble.is-music { background: #2c2c35 !important; color: #fff !important; border-radius: 16px; padding: 12px; min-width: 220px; max-width: 260px; cursor: pointer; text-align: left; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important; transition: transform 0.2s; }
+.msg-bubble.is-music:active { transform: scale(0.98); }
+.msg-row.is-user .msg-bubble.is-music { background: #1dd1a1 !important; color: #000 !important; }
+.music-card-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 8px; }
+.msg-row.is-user .music-card-header { border-bottom: 1px solid rgba(0,0,0,0.1); }
+.music-icon { width: 36px; height: 36px; border-radius: 10px; background: #5c8aff; display: flex; justify-content: center; align-items: center; font-size: 16px; color: #fff; flex-shrink: 0; }
 .msg-row.is-user .music-icon { background: #000; }
-
 .music-info { flex: 1; overflow: hidden; }
 .m-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
 .m-artist { font-size: 11px; opacity: 0.7; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .m-play-btn { width: 28px; height: 28px; border-radius: 50%; background: #fff; color: #000; display: flex; justify-content: center; align-items: center; font-size: 10px; flex-shrink: 0; }
 .msg-row.is-user .m-play-btn { background: #000; color: #fff; }
 .music-card-desc { font-size: 12px; opacity: 0.8; font-style: italic; line-height: 1.4; word-break: break-all; }
 
-.msg-bubble.is-music-cmd {
-  background: linear-gradient(135deg, #ff5252, #ff7b7b) !important;
-  color: #fff !important;
-  border-radius: 16px;
-  padding: 12px;
-  min-width: 220px;
-  box-shadow: 0 4px 15px rgba(255,82,82,0.3) !important;
-}
+.msg-bubble.is-music-cmd { background: linear-gradient(135deg, #ff5252, #ff7b7b) !important; color: #fff !important; border-radius: 16px; padding: 12px; min-width: 220px; box-shadow: 0 4px 15px rgba(255,82,82,0.3) !important; }
 .cmd-header { font-size: 11px; font-weight: 800; background: rgba(0,0,0,0.2); display: inline-block; padding: 4px 8px; border-radius: 6px; margin-bottom: 8px; }
 
 .msg-bubble.is-lyric { background: #fdfdfd !important; color: #555 !important; border-left: 3px solid #5c8aff; padding: 12px 15px !important; border-radius: 8px !important; box-shadow: 0 2px 10px rgba(0,0,0,0.03) !important; }
@@ -302,3 +298,4 @@ const stickerUrl = computed(() => {
 .msg-bubble.is-colisten-req { background: #eef2ff !important; color: #5c8aff !important; border: 1px solid rgba(92,138,255,0.3); padding: 12px 15px !important; cursor: pointer; text-align: center; }
 .msg-bubble.is-colisten-req:active { background: #e0e8ff !important; }
 </style>
+

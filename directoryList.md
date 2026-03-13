@@ -11,8 +11,12 @@
     |-- dist
     |   |-- index.html
     |   |-- assets
+    |       |-- index-9qaT2RjD.js
     |       |-- index-CKkQOlpP.js
     |       |-- index-DASBRLLz.css
+    |       |-- index-DHEOfvJh.css
+    |       |-- index-eEbgW1OU.js
+    |       |-- index-LthLsWDK.css
     |-- public
     |-- src
         |-- App.vue
@@ -31,6 +35,7 @@
         |   |   |-- modals
         |   |       |-- CoListenInvite.vue
         |   |       |-- LibraryModal.vue
+        |   |       |-- LyricCssPanel.vue
         |   |       |-- PlaylistDrawer.vue
         |   |       |-- SearchPanel.vue
         |   |       |-- StatsModal.vue
@@ -48,6 +53,7 @@
         |   |   |-- PromptOrderPage.vue
         |   |   |-- QQApp.vue
         |   |   |-- QQBottomNav.vue
+        |   |   |-- StatusPanel.vue
         |   |   |-- StickerManagerPage.vue
         |   |   |-- SummaryPanel.vue
         |   |   |-- components
@@ -74,6 +80,7 @@
         |   |-- usePersona.js
         |   |-- useProfile.js
         |   |-- usePromptOrder.js
+        |   |-- useStatusPresets.js
         |   |-- useStickers.js
         |   |-- useTime.js
         |   |-- useWorldbook.js
