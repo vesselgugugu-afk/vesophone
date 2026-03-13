@@ -15,7 +15,6 @@
           </div>
           <input type="file" ref="avatarInput" accept="image/*" style="display:none;" @change="onAvatarChange" />
           
-          <!-- 核心修改：支持 png 和 json 导入 -->
           <input type="file" ref="jsonInput" accept=".json,.png" style="display:none;" @change="onFileImport" />
           
           <div style="position:absolute; right:20px; bottom:15px; display:flex; gap:10px; z-index: 20;">
@@ -177,6 +176,24 @@ const form = ref(getEmptyCharacter())
 const avatarInput = ref(null)
 const jsonInput = ref(null)
 
+// 极限压缩引擎
+const compressImage = (base64Str, maxWidth = 400) => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.src = base64Str
+    img.onload = () => {
+      if (img.width <= maxWidth) return resolve(base64Str)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const ratio = maxWidth / img.width
+      canvas.width = maxWidth
+      canvas.height = img.height * ratio
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.8))
+    }
+  })
+}
+
 watch(() => props.show, (newVal) => {
   if (newVal) {
     activeTab.value = 'basic'
@@ -214,16 +231,18 @@ const addPreset = () => {
 const removePreset = (idx) => form.value.variablePresets.splice(idx, 1)
 
 const triggerAvatarUpload = () => { avatarInput.value?.click() }
+
+// 接入压缩
 const onAvatarChange = (e) => {
   const file = e.target.files[0]
   if (!file) return
-  if (file.size > 2 * 1024 * 1024) return alert('图片过大')
   const reader = new FileReader()
-  reader.onload = (ev) => { form.value.avatar = ev.target.result }
+  reader.onload = async (ev) => { 
+    form.value.avatar = await compressImage(ev.target.result, 400) 
+  }
   reader.readAsDataURL(file)
 }
 
-// 核心功能：提取 PNG 中的 tEXt 数据块
 const extractPngTextChunk = (arrayBuffer) => {
   const view = new DataView(arrayBuffer)
   let offset = 8
@@ -241,10 +260,8 @@ const extractPngTextChunk = (arrayBuffer) => {
       const nullIdx = textStr.indexOf('\0')
       const keyword = textStr.substring(0, nullIdx)
       
-      // 角色卡的专属关键词
       if (keyword === 'chara') {
         const base64Str = textStr.substring(nullIdx + 1)
-        // 解析 Base64，由于涉及中文，需要使用标准的 Unicode 解码方式
         const binString = atob(base64Str)
         const bytes = new Uint8Array(binString.length)
         for (let i = 0; i < binString.length; i++) {
@@ -294,7 +311,6 @@ const onFileImport = (e) => {
   }
 }
 
-// 核心功能：导出 V3 格式的 Json 角色卡
 const exportJson = () => {
   const exportData = {
     spec: "chara_v3",
@@ -331,12 +347,44 @@ const exportJson = () => {
   URL.revokeObjectURL(url)
 }
 
-const handleSave = () => {
-  if (saveCharacter(form.value)) emit('close')
+const handleSave = async () => {
+  // 等待底层存储完成 (IndexedDB)
+  if (await saveCharacter(form.value)) emit('close')
   else alert('请至少填写网络昵称。')
 }
 </script>
 
 <style scoped>
-/* 保持所有样式不变，避免格式压缩 */
+.app-window { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
+.editor-card { background: #f4f5f7; border-radius: 20px 20px 0 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 -10px 40px rgba(0,0,0,0.2); }
+
+.editor-cover { height: 160px; background: linear-gradient(135deg, #e0eafc, #cfdef3); position: relative; display: flex; justify-content: center; align-items: center; }
+.editor-avatar-btn { width: 80px; height: 80px; border-radius: 50%; background: #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; font-size: 24px; color: #ccc; cursor: pointer; border: 3px solid #fff; background-size: cover; background-position: center; transition: 0.2s; }
+.editor-avatar-btn:active { transform: scale(0.95); }
+
+.editor-tabs { display: flex; background: #fff; border-bottom: 1px solid #eee; }
+.editor-tab { flex: 1; text-align: center; padding: 15px 0; font-size: 14px; font-weight: 600; color: #888; cursor: pointer; position: relative; }
+.editor-tab.active { color: var(--text-main); }
+.editor-tab.active::after { content: ''; position: absolute; bottom: 0; left: 30%; right: 30%; height: 3px; background: var(--text-main); border-radius: 3px 3px 0 0; }
+
+.editor-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+
+.ins-input-group { display: flex; flex-direction: column; gap: 8px; background: #fff; padding: 15px; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+.ins-label { font-size: 12px; font-weight: 700; color: #555; }
+.ins-input { padding: 10px 12px; border: 1px solid #eee; border-radius: 10px; font-size: 14px; background: #f9f9f9; outline: none; transition: 0.2s; }
+.ins-input:focus { border-color: #ddd; background: #fff; }
+.ins-textarea { padding: 10px 12px; border: 1px solid #eee; border-radius: 10px; font-size: 13px; background: #f9f9f9; outline: none; min-height: 80px; resize: vertical; line-height: 1.5; }
+.ins-textarea:focus { border-color: #ddd; background: #fff; }
+
+.var-card-wrap { border: 1px solid #eee; border-radius: 12px; overflow: hidden; }
+.var-header { display: flex; align-items: center; gap: 10px; padding: 10px; background: #f9f9f9; border-bottom: 1px solid #eee; }
+.var-select { padding: 8px; border: 1px solid #eee; border-radius: 8px; font-size: 12px; background: #fff; outline: none; }
+.cond-list { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.cond-item { background: #f4f5f7; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
+.cond-row { display: flex; align-items: center; gap: 8px; }
+.cond-prompt { width: 100%; height: 60px; border: 1px solid #eee; border-radius: 8px; padding: 8px; font-size: 12px; resize: none; outline: none; }
+.btn-auto-gen { width: 100%; padding: 12px; border-radius: 12px; background: #5c8aff; color: #fff; font-weight: 600; border: none; font-size: 13px; cursor: pointer; box-shadow: 0 4px 15px rgba(92,138,255,0.3); }
+
+.slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
 </style>

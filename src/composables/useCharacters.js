@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue'
+import db from '@/db'
 
 const KEY = 'characters'
 
@@ -43,33 +44,70 @@ const migratedData = rawData.map(char => {
     variables: newVars, 
     statusUpdatePrompt: char.statusUpdatePrompt || defaultStatusUpdatePrompt,
     variablePresets: char.variablePresets || [],
-    // 新增：高级设置开关，如果老数据已经有了变量，默认开启，否则关闭
     advancedSettingsEnabled: char.advancedSettingsEnabled !== undefined ? char.advancedSettingsEnabled : (newVars.length > 0)
   }
 })
 
 const characters = ref(migratedData)
 
-watch(characters, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
+// 核心重构：动静分离存储，拦截 LocalStorage 保存，剔除大型 Base64 图片
+watch(characters, (v) => {
+  const lightData = v.map(c => ({ ...c, avatar: '' })) 
+  localStorage.setItem(KEY, JSON.stringify(lightData))
+}, { deep: true })
+
+// 核心重构：启动时将 IndexedDB 中的高清图片，热挂载到响应式内存中
+;(async () => {
+  try {
+    const records = await db.media.toArray()
+    const mediaMap = {}
+    records.forEach(r => mediaMap[r.id] = r.data)
+
+    let needCleanLs = false
+    for (const c of characters.value) {
+      if (c.avatar && c.avatar.length > 1000) {
+        await db.media.put({ id: `char_${c.id}`, data: c.avatar })
+        needCleanLs = true
+      } else if (mediaMap[`char_${c.id}`]) {
+        c.avatar = mediaMap[`char_${c.id}`]
+      }
+    }
+    if (needCleanLs) {
+      localStorage.setItem(KEY, JSON.stringify(characters.value.map(c => ({...c, avatar: ''}))))
+    }
+  } catch (e) {
+    console.error('媒体库挂载失败', e)
+  }
+})()
 
 export function useCharacters() {
-  const saveCharacter = (form) => {
+  const saveCharacter = async (form) => {
     if (!form.name) return false
     
-    const index = characters.value.findIndex(c => c.id === form.id)
+    let targetId = form.id
+    const index = characters.value.findIndex(c => c.id === targetId)
     if (index !== -1) {
       characters.value[index] = { ...form }
     } else {
+      targetId = Date.now()
       characters.value.push({
         ...form,
-        id: Date.now()
+        id: targetId
       })
+    }
+
+    // 核心：把头像数据写入高速宽带库 DB
+    if (form.avatar) {
+      await db.media.put({ id: `char_${targetId}`, data: form.avatar })
+    } else {
+      await db.media.delete(`char_${targetId}`)
     }
     return true
   }
 
-  const deleteChar = (id) => {
+  const deleteChar = async (id) => {
     characters.value = characters.value.filter((c) => c.id !== id)
+    await db.media.delete(`char_${id}`) // 清理尸体
   }
 
   const getCharById = (id) => {
@@ -89,7 +127,7 @@ export function useCharacters() {
     variables: [],
     statusUpdatePrompt: defaultStatusUpdatePrompt,
     variablePresets: [],
-    advancedSettingsEnabled: false // 默认关闭高级设置
+    advancedSettingsEnabled: false
   })
 
   const generateStatusPrompt = (variables) => {

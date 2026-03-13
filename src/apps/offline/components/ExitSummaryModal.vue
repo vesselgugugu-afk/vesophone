@@ -18,7 +18,12 @@
 
       <div class="ios-alert-actions" v-if="!isSummarizing">
         <div class="ios-alert-btn" @click="$emit('cancel')">取消退出</div>
+        <div class="ios-alert-btn danger" @click="$emit('skip')">直接退出</div>
         <div class="ios-alert-btn bold" @click="$emit('confirm', localText)">保存并离开</div>
+      </div>
+
+      <div class="ios-alert-actions" v-if="isSummarizing">
+        <div class="ios-alert-btn danger" @click="$emit('skip')">不总结，直接退出</div>
       </div>
       
     </div>
@@ -34,7 +39,7 @@ const props = defineProps({
   summaryText: String
 })
 
-const emit = defineEmits(['cancel', 'confirm'])
+const emit = defineEmits(['cancel', 'confirm', 'skip'])
 const localText = ref('')
 
 watch(() => props.summaryText, (val) => {
@@ -51,4 +56,5 @@ watch(() => props.summaryText, (val) => {
 .ios-alert-btn:last-child { border-right: none; }
 .ios-alert-btn:active { background: rgba(0,0,0,0.05); }
 .ios-alert-btn.bold { font-weight: 600; }
+.ios-alert-btn.danger { color: #ff3b30; }
 </style>

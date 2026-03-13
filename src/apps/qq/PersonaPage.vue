@@ -73,6 +73,23 @@ const form = ref({ title: '', name: '', avatar: '', content: '' })
 
 const fileInput = ref(null)
 
+const compressImage = (base64Str, maxWidth = 300) => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.src = base64Str
+    img.onload = () => {
+      if (img.width <= maxWidth) return resolve(base64Str)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const ratio = maxWidth / img.width
+      canvas.width = maxWidth
+      canvas.height = img.height * ratio
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.8))
+    }
+  })
+}
+
 const openEditModal = (p) => {
   editingId.value = p.id
   form.value = { title: p.title, name: p.name, avatar: p.avatar, content: p.content }
@@ -84,7 +101,10 @@ const handleFileChange = (e) => {
   if (!file) return
   if (file.size > 2 * 1024 * 1024) return alert('图片过大')
   const reader = new FileReader()
-  reader.onload = (ev) => { form.value.avatar = ev.target.result; fileInput.value.value = '' }
+  reader.onload = async (ev) => { 
+    form.value.avatar = await compressImage(ev.target.result)
+    fileInput.value.value = '' 
+  }
   reader.readAsDataURL(file)
 }
 
@@ -103,7 +123,6 @@ const handleSave = () => {
   showModal.value = false
 }
 
-// 暴露给外部(QQApp)控制新建弹窗
 defineExpose({ 
   openModal: () => { 
     editingId.value = null

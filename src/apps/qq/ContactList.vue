@@ -45,10 +45,25 @@
         <div class="item-name">{{ char.name }} <span class="item-tag" v-if="char.trueName !== char.name">真名: {{ char.trueName }}</span></div>
         <div class="item-desc">{{ char.description || '这个人很懒，什么都没写' }}</div>
       </div>
-      <i class="fas fa-trash btn-delete" @click.stop="handleDeleteChar(char.id)"></i>
+      <i class="fas fa-trash btn-delete" @click.stop="promptDelete(char)"></i>
     </div>
 
-    <!-- 好友验证申请模态框 -->
+    <!-- 核心更新：优雅的删除防呆弹窗 -->
+    <InnerModal :show="deleteModal.show" @close="deleteModal.show = false">
+      <div class="modal-title" style="color:#ff5252;">删除联系人</div>
+      <div style="padding:20px 15px; text-align:center; color:#555; font-size:14px; line-height:1.6;">
+        确定要彻底删除 <b>{{ deleteModal.char?.name }}</b> 吗？<br><br>
+        <span style="color:#ff5252; font-size:12px; background:rgba(255,82,82,0.1); padding:5px 10px; border-radius:6px; display:inline-block;">
+          <i class="fas fa-exclamation-triangle"></i> 删除后，相关的单人聊天记录和记忆库将被同步抹除，且无法恢复！
+        </span>
+      </div>
+      <div class="modal-actions" style="display:flex; gap:10px; padding:0 15px 15px;">
+        <button class="btn-cancel" style="flex:1; padding:10px; border-radius:8px;" @click="deleteModal.show = false">取消</button>
+        <button class="btn-confirm" style="flex:1; padding:10px; border-radius:8px; background:#ff5252; color:#fff; border:none;" @click="executeDelete">彻底删除</button>
+      </div>
+    </InnerModal>
+
+    <!-- 核心更新：支持多条消息堆叠的好友验证申请模态框 -->
     <InnerModal :show="showNewFriends" @close="showNewFriends = false">
       <div class="modal-title">好友验证请求</div>
       
@@ -56,19 +71,23 @@
         暂无新的请求
       </div>
       
-      <div v-else style="display:flex; flex-direction:column; gap:10px; margin:15px 0; max-height:300px; overflow-y:auto;">
-        <div v-for="req in friendRequests" :key="req.id" style="background:#f9f9f9; padding:15px; border-radius:12px; display:flex; flex-direction:column; gap:10px;">
+      <div v-else style="display:flex; flex-direction:column; gap:10px; margin:15px 0; max-height:350px; overflow-y:auto; padding:0 5px;">
+        <div v-for="req in friendRequests" :key="req.id" style="background:#f9f9f9; padding:15px; border-radius:12px; display:flex; flex-direction:column; gap:10px; border:1px solid #eee;">
           
           <div style="display:flex; gap:10px; align-items:center;">
             <div style="width:40px; height:40px; border-radius:50%; background-size:cover; background-position:center; background-color:#ddd;" :style="getReqAvatar(req.chatId)"></div>
             <div style="flex:1;">
               <div style="font-weight:600; font-size:14px; color:#333;">{{ getReqName(req.chatId) }}</div>
-              <div style="font-size:10px; color:#888;">{{ new Date(req.time).toLocaleString() }}</div>
+              <div style="font-size:10px; color:#888;">最新: {{ new Date(req.time).toLocaleString() }}</div>
             </div>
           </div>
           
-          <div style="font-size:13px; color:#555; background:#fff; padding:10px; border-radius:8px; border:1px solid #eee;">
-            "{{ req.text }}"
+          <!-- 多条消息堆叠渲染区 -->
+          <div style="font-size:13px; color:#555; background:#fff; padding:10px; border-radius:8px; border:1px solid #e5e5e5; display:flex; flex-direction:column; gap:8px;">
+            <div v-for="(msg, idx) in req.messages" :key="idx" :style="idx !== req.messages.length - 1 ? 'border-bottom:1px dashed #f0f0f0; padding-bottom:8px;' : ''">
+              <div style="font-size:10px; color:#aaa; margin-bottom:4px;">{{ new Date(msg.time).toLocaleString() }}</div>
+              <div style="line-height:1.4;">"{{ msg.text }}"</div>
+            </div>
           </div>
           
           <div style="display:flex; gap:10px; margin-top:5px;">
@@ -98,16 +117,21 @@ const { characters, deleteChar } = useCharacters()
 const { chatSessions, friendRequests, acceptFriendRequest, removeFriendRequest, deleteSession } = useChatSessions()
 
 const showNewFriends = ref(false)
+const deleteModal = ref({ show: false, char: null })
 
-const handleDeleteChar = (charId) => {
-  if (confirm('警告：确定要彻底删除该角色吗？\n删除角色将会同步抹除与之相关的单人聊天记录和记忆库，且无法恢复！')) {
-    const session = chatSessions.value.find(c => !c.isGroup && c.participants && c.participants.length > 0 && c.participants[0].id === charId)
-    if (session) {
-      deleteSession(session.id)
-    }
-    deleteChar(charId)
-    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '角色及相关数据已抹除' }))
+const promptDelete = (char) => {
+  deleteModal.value = { show: true, char }
+}
+
+const executeDelete = () => {
+  const charId = deleteModal.value.char.id
+  const session = chatSessions.value.find(c => !c.isGroup && c.participants && c.participants.length > 0 && c.participants[0].id === charId)
+  if (session) {
+    deleteSession(session.id)
   }
+  deleteChar(charId)
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '角色及相关数据已彻底抹除' }))
+  deleteModal.value.show = false
 }
 
 const getReqChat = (chatId) => {

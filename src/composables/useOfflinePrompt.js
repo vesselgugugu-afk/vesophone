@@ -15,7 +15,7 @@ export function useOfflinePrompt() {
     { id: 'sys_offline_char', key: 'offline_char' },
     { id: 'sys_offline_user', key: 'offline_user' },
     { id: 'sys_long_term_memory', key: 'long_term_memory' },
-    { id: 'sys_local_worldbook', key: 'local_worldbook' }, // 新增独立局部世界书节点
+    { id: 'sys_local_worldbook', key: 'local_worldbook' }, 
     { id: 'sys_worldbook', key: 'worldbook' },
     { id: 'sys_chat_history', key: 'chat_history' },
     { id: 'sys_offline_quick', key: 'offline_quick' }
@@ -23,7 +23,6 @@ export function useOfflinePrompt() {
 
   let savedOrder = JSON.parse(localStorage.getItem('aero_offline_prompt_order'))
   if (savedOrder) {
-    // 兼容补丁：如果老配置里没有局部世界书，则自动插入
     if (!savedOrder.find(o => o.key === 'local_worldbook')) {
       const memIndex = savedOrder.findIndex(o => o.key === 'long_term_memory')
       savedOrder.splice(memIndex !== -1 ? memIndex + 1 : 4, 0, { id: 'sys_local_worldbook', key: 'local_worldbook' })
@@ -151,6 +150,8 @@ export function useOfflinePrompt() {
     } catch (e) { return false }
   }
 
+  const stripThinking = (text) => text ? text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim() : ''
+
   const buildOfflineApiMessages = (chat, config, offlineMessages, activeMemories) => {
     const messages = []
     let currentSystemContent = ''
@@ -179,7 +180,10 @@ export function useOfflinePrompt() {
     for (const item of offlinePromptOrder.value) {
       if (item.key === 'chat_history') {
         pushSystem()
-        offlineMessages.forEach(m => { messages.push({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content }) })
+        // 核心：无情剥离线下历史记录中的思维链
+        offlineMessages.forEach(m => { 
+          messages.push({ role: m.role === 'ai' ? 'assistant' : 'user', content: stripThinking(m.content) }) 
+        })
         continue
       }
 
@@ -250,4 +254,5 @@ export function useOfflinePrompt() {
     importConfig, buildOfflineApiMessages, previewData
   }
 }
+
 

@@ -7,10 +7,13 @@
         :session="currentSession"
         :activeOfflineMessages="activeOfflineMessages"
         @exit-request="handleExitRequest"
+        @exit-direct="closeSessionAndExit"
         @update-config="updateSessionConfig"
         @update-bg="updateSessionBg"
         @user-send="(text) => addOfflineMessage({ role: 'user', content: text, tokens: Math.ceil(text.length / 4) })"
         @ai-reply="(obj) => addOfflineMessage({ role: 'ai', content: obj.text, tokens: obj.tokens })"
+        @update-message="updateOfflineMessage"
+        @delete-messages="deleteOfflineMessages"
         @trigger-summary="handleIngameSummary"
       />
 
@@ -42,6 +45,7 @@
         :summaryText="summaryText"
         @cancel="showExitModal = false"
         @confirm="confirmExit"
+        @skip="closeSessionAndExit"
       />
 
     </div>
@@ -64,7 +68,7 @@ const {
   offlineSessions, activeOfflineMessages, currentSession, 
   loadAllSessions, createOrLoadSession, loadSessionById,
   updateSessionConfig, updateSessionBg, updateSessionLastSummarizedFloor,
-  addOfflineMessage, deleteSession 
+  addOfflineMessage, updateOfflineMessage, deleteOfflineMessages, deleteSession 
 } = useOffline()
 
 const { apiUrl, apiKey, apiModel } = useApi()
@@ -90,7 +94,6 @@ onUnmounted(() => { window.removeEventListener('open-offline-meeting', handleOpe
 watch(() => props.show, async (val) => { if (val && !currentSession.value) await loadAllSessions() })
 const openSession = async (id) => { await loadSessionById(id) }
 
-// === 核心：执行切片总结 ===
 const executeSummaryApi = async (isManual) => {
   const lastFloor = currentSession.value.lastSummarizedFloor || 0
   const unsummarizedMsgs = activeOfflineMessages.value.filter(m => m.floor > lastFloor)
@@ -133,9 +136,7 @@ const handleIngameSummary = async ({ isManual }) => {
   }
 }
 
-// 退出拦截
 const handleExitRequest = async () => {
-  // 核心修复：如果是空记录，直接无情抹除
   if (activeOfflineMessages.value.length === 0) {
     const targetChatId = currentSession.value.chatId
     await deleteSession(currentSession.value.id)
@@ -183,7 +184,6 @@ const closeSessionAndExit = () => {
 </script>
 
 <style scoped>
-/* 核心修复：补全了所有丢失的样式 */
 .app-window { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
 .app-header { display: flex; justify-content: space-between; align-items: center; padding: env(safe-area-inset-top, 40px) 15px 15px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 10; flex-shrink: 0; }
 .btn-back { color: var(--text-main); font-size: 15px; font-weight: 600; cursor: pointer; }
@@ -199,4 +199,3 @@ const closeSessionAndExit = () => {
 .r-time { font-size: 11px; color: #888; }
 .r-del { color: #ff5252; padding: 10px; font-size: 16px; cursor: pointer; }
 </style>
-

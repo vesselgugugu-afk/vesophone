@@ -14,6 +14,12 @@
       @open-settings="showSettings = true"
     />
 
+    <!-- 核心更新：聊天内顶部的悬浮好友请求提示 -->
+    <div v-if="pendingRequestId" style="background: #fff8e6; color: #d35400; padding: 10px 15px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 10; border-bottom: 1px solid #ffeaa7;">
+      <span style="display:flex; align-items:center; gap:6px;"><i class="fas fa-bell"></i> 对方发来了好友验证请求</span>
+      <button style="background: #d35400; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 11px; cursor: pointer; font-weight: 600;" @click="handleAcceptFriend">去通过</button>
+    </div>
+
     <div class="chat-area" ref="chatBox" :style="chat.bgImage ? { backgroundImage: `url(${chat.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
       <div v-if="chat.bgImage" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.2); pointer-events:none; z-index:0;"></div>
 
@@ -46,7 +52,6 @@
       </div>
     </div>
 
-    <!-- 用户主动拉黑对方的 UI（隐藏输入框，提供视奸按钮） -->
     <div v-if="chat.isBlocked" style="padding:15px; text-align:center; color:#888; font-size:13px; background:#f4f5f7; z-index:20; box-shadow:0 -2px 10px rgba(0,0,0,0.05);">
       <div style="margin-bottom:12px;">你已将对方拉黑，<span style="color:#5c8aff; cursor:pointer;" @click="chat.isBlocked = false">点击解除</span></div>
       <button class="btn-send" style="padding:8px 20px; font-size:12px; border-radius:12px; font-weight:600;" @click="triggerAiReply">
@@ -54,7 +59,6 @@
       </button>
     </div>
     
-    <!-- 被对方拉黑时的功能悬浮条（保留输入框给用户看感叹号） -->
     <div v-if="chat.isBlockedByAi" style="padding:10px 15px; text-align:center; background:#fff2f2; z-index:20; border-top: 1px solid #ffcccc; display:flex; justify-content:center; gap:10px;">
       <button style="padding:6px 12px; font-size:12px; border-radius:12px; background:#ff5252; color:#fff; border:none; font-weight:600;" @click="sendFriendRequestToAi">
         <i class="fas fa-user-plus"></i> 发送好友申请
@@ -160,7 +164,7 @@ const emit = defineEmits(['exit', 'edit-character'])
 
 const { apiUrl, apiKey, apiModel } = useApi()
 const { buildApiMessages } = usePromptOrder()
-const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories, addFriendRequest } = useChatSessions()
+const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories, addFriendRequest, friendRequests, acceptFriendRequest } = useChatSessions()
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
 const { musicState, loadSong, toggleCoListen, playSpecific } = useMusic()
@@ -183,6 +187,19 @@ const activeStatusMsg = ref(null)
 const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
 const pendingAutoSummary = ref(null)
+
+// 核心计算：判断当前聊天对象是否向你发送了好友请求
+const pendingRequestId = computed(() => {
+  const req = friendRequests.value.find(r => r.chatId === props.chat.id)
+  return req ? req.id : null
+})
+
+const handleAcceptFriend = () => {
+  if (pendingRequestId.value) {
+    acceptFriendRequest(pendingRequestId.value)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已通过好友验证并解除拉黑' }))
+  }
+}
 
 const handleOfflineEnded = (e) => {
   if (e.detail && e.detail.chatId === props.chat.id) {
@@ -292,7 +309,6 @@ const handleMeetingConfirm = (accept) => {
   scrollToBottom()
 }
 
-// 被拉黑后主动申请加回
 const sendFriendRequestToAi = () => {
   const txt = prompt('输入你想对TA说的验证消息：', '我是...')
   if (txt !== null) {
@@ -311,7 +327,6 @@ const handleSendText = (txt) => {
   if (quotingText.value) {
     msgObj.refText = quotingText.value
   }
-  // 核心注入：对方拉黑你的情况下强行置红叹号
   if (props.chat.isBlockedByAi) {
     msgObj.isFailed = true
   }
@@ -710,12 +725,11 @@ const triggerAiReply = async () => {
         if (mType === 'sys_action') {
           if (mAction === 'block') {
             props.chat.isBlockedByAi = true
-            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '对方开启了好友验证，你还不是他(她)朋友。请先发送朋友验证请求，对方验证通过后，才能聊天。' })
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：对方开启了好友验证，你还不是他(她)朋友。请先发送朋友验证请求，对方验证通过后，才能聊天。]' })
           } else if (mAction === 'unblock') {
             props.chat.isBlockedByAi = false
-            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '对方已将你移出黑名单。' })
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：对方已将你移出黑名单。]' })
           } else if (mAction === 'invite_meeting') {
-            // 核心修改：触发美观的线下邀约弹窗
             alert.value = {
               show: true,
               type: 'invite_meeting',

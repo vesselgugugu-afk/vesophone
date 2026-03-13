@@ -20,6 +20,8 @@
     |       |-- index-DASBRLLz.css
     |       |-- index-DDrNGO1C.css
     |       |-- index-DHEOfvJh.css
+    |       |-- index-DKhrD7sf.js
+    |       |-- index-DvtbZwze.css
     |       |-- index-Dw5NUDfb.css
     |       |-- index-eBirwLHZ.css
     |       |-- index-eEbgW1OU.js
@@ -86,6 +88,7 @@
         |       |-- WorldbookList.vue
         |       |-- WorldbookSidebar.vue
         |-- components
+        |   |-- DesktopWidgets.vue
         |   |-- InnerModal.vue
         |   |-- RoleSelector.vue
         |   |-- SortItem.vue
@@ -95,6 +98,7 @@
         |   |-- useAppearance.js
         |   |-- useCharacters.js
         |   |-- useChatSessions.js
+        |   |-- useDesktop.js
         |   |-- useMusic.js
         |   |-- useMusicApi.js
         |   |-- useOffline.js

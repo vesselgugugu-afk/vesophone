@@ -189,6 +189,8 @@ export function usePromptOrder() {
     return `[${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}]`
   }
 
+  const stripThinking = (text) => text ? text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim() : ''
+
   const previewData = computed(() => {
     let text = ''
     let staticTokenStr = ''
@@ -225,7 +227,7 @@ export function usePromptOrder() {
       } else if (item.key === 'memory') {
         text += `[长期记忆库] (动态提取)\n\n`
       } else if (item.key === 'chat_history') {
-        text += `[聊天记录] (动态切片)\n\n`
+        text += `[聊天记录] (动态切片，隐藏思维链)\n\n`
       }
     })
     return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
@@ -262,7 +264,6 @@ ${queueStr}
           baseProtocol += `\n\n[🕒 现实时间感知]\n当前的现实时间是：${timeStr}。请根据当前的时间给出合理的回复。`
         }
 
-        // 核心注入：拦截双向拉黑状态的情景干预
         if (currentChat.isBlocked) {
           baseProtocol += `\n\n[🚨 状态提示] User已将你拉黑！你的常规文本消息将被User的系统拒收。你现在只能使用 <msg type="sys_action" action="add_friend">你的验证信息</msg> 试图加回他，或者使用 <msg type="sys_action" action="invite_meeting"></msg> 尝试邀请线下见面！`
         }
@@ -307,16 +308,17 @@ ${queueStr}
         const recentMessages = (activeMessages || []).slice(-contextCount)
 
         const history = recentMessages
-          .filter((m) => m.role !== 'system')
+          .filter((m) => m.role !== 'system' && !m.content.startsWith('[系统'))
           .map((m) => {
             const timePrefix = formatDate(m.timestamp || m.id) + ' '
-            let prefix = '', cont = m.content
+            let prefix = ''
+            // 核心：无情剥离思维链
+            let cont = stripThinking(m.content)
             
-            // 核心修改：在给大模型的上下文里，过滤掉用户的失败消息或加上拦截前缀
             if (m.isFailed) {
               prefix = `【User尝试发送，但因被拉黑而被系统拦截的消息】`
             } else if (m.type === 'recalled') { 
-              prefix = '【撤回了一条消息】原内容：'; cont = m.oldContent || m.content 
+              prefix = '【撤回了一条消息】原内容：'; cont = stripThinking(m.oldContent || m.content)
             } else if (m.type === 'transfer') {
               prefix = `【发起转账: ￥${m.amount}，状态: ${m.status}】备注：`
             } else if (m.type === 'voice') {
@@ -341,7 +343,12 @@ ${queueStr}
             
             return { role: m.role === 'ai' ? 'assistant' : 'user', content: timePrefix + prefix + cont }
           })
-        apiMessages.push(...history)
+        
+        // 补上专门的系统记录流
+        const sysRecords = recentMessages.filter(m => m.role === 'system' && m.content.startsWith('[系统'))
+                                         .map(m => ({ role: 'system', content: formatDate(m.timestamp || m.id) + ' ' + m.content }))
+        
+        apiMessages.push(...history, ...sysRecords)
       }
     })
     return apiMessages

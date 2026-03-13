@@ -17,7 +17,7 @@ export function useOffline() {
       chatTitle,
       createTime: Date.now(),
       bgImage: '',
-      lastSummarizedFloor: 0, // 核心新增：记录上次总结到了哪一楼
+      lastSummarizedFloor: 0,
       config: {
         wordCountMin: 150,
         wordCountMax: 300,
@@ -76,6 +76,19 @@ export function useOffline() {
     return newMsg
   }
 
+  // 核心新增：编辑指定消息
+  const updateOfflineMessage = async (msgId, newContent) => {
+    await db.offlineMessages.update(msgId, { content: newContent })
+    const msg = activeOfflineMessages.value.find(m => m.id === msgId)
+    if (msg) msg.content = newContent
+  }
+
+  // 核心新增：删除多条消息 (用于手动删除或重Roll截断)
+  const deleteOfflineMessages = async (msgIds) => {
+    await db.offlineMessages.where('id').anyOf(msgIds).delete()
+    activeOfflineMessages.value = activeOfflineMessages.value.filter(m => !msgIds.includes(m.id))
+  }
+
   const deleteSession = async (id) => {
     await db.offlineSessions.delete(id)
     await db.offlineMessages.where({ sessionId: id }).delete()
@@ -93,7 +106,10 @@ export function useOffline() {
     updateSessionBg,
     updateSessionLastSummarizedFloor,
     addOfflineMessage,
+    updateOfflineMessage,
+    deleteOfflineMessages,
     deleteSession
   }
 }
+
 

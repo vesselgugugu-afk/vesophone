@@ -43,7 +43,14 @@ rawData.forEach(chat => {
 
 const chatSessions = ref(rawData)
 const cssPresets = ref(load(KEY_CSS, []))
-const friendRequests = ref(load(KEY_FRIENDS, []))
+
+const rawFriends = load(KEY_FRIENDS, [])
+rawFriends.forEach(r => {
+  if (r.text && !r.messages) {
+    r.messages = [{ text: r.text, time: r.time }]
+  }
+})
+const friendRequests = ref(rawFriends)
 
 const activeMessages = ref([])
 const activeMemories = ref([])
@@ -69,9 +76,44 @@ if (!localStorage.getItem('dbMigrated_v2')) {
   localStorage.setItem('dbMigrated_v2', 'true')
 }
 
-watch(chatSessions, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
+// 核心重构：剥离大型资源保存，防止 LocalStorage 崩溃
+watch(chatSessions, (v) => {
+  const lightData = v.map(c => ({ ...c, overrideAvatar: '', bgImage: '' }))
+  localStorage.setItem(KEY, JSON.stringify(lightData))
+}, { deep: true })
+
 watch(cssPresets, (v) => localStorage.setItem(KEY_CSS, JSON.stringify(v)), { deep: true })
 watch(friendRequests, (v) => localStorage.setItem(KEY_FRIENDS, JSON.stringify(v)), { deep: true })
+
+// 核心重构：热挂载聊天背景和头像
+;(async () => {
+  try {
+    const records = await db.media.toArray()
+    const mediaMap = {}
+    records.forEach(r => mediaMap[r.id] = r.data)
+
+    let needCleanLs = false
+    for (const chat of chatSessions.value) {
+      if (chat.overrideAvatar && chat.overrideAvatar.length > 1000) {
+        await db.media.put({ id: `chat_avt_${chat.id}`, data: chat.overrideAvatar })
+        needCleanLs = true
+      } else if (mediaMap[`chat_avt_${chat.id}`]) {
+        chat.overrideAvatar = mediaMap[`chat_avt_${chat.id}`]
+      }
+      
+      if (chat.bgImage && chat.bgImage.length > 1000) {
+        await db.media.put({ id: `chat_bg_${chat.id}`, data: chat.bgImage })
+        needCleanLs = true
+      } else if (mediaMap[`chat_bg_${chat.id}`]) {
+        chat.bgImage = mediaMap[`chat_bg_${chat.id}`]
+      }
+    }
+    if (needCleanLs) {
+      localStorage.setItem(KEY, JSON.stringify(chatSessions.value.map(c => ({...c, overrideAvatar: '', bgImage: ''}))))
+    }
+  } catch (e) { console.error(e) }
+})()
+
 
 export function useChatSessions() {
   const createSession = (selectedChars) => {
@@ -117,6 +159,8 @@ export function useChatSessions() {
     chatSessions.value = chatSessions.value.filter((c) => c.id !== id)
     await db.messages.where({ sessionId: id }).delete()
     await db.memories.where({ sessionId: id }).delete()
+    await db.media.delete(`chat_avt_${id}`)
+    await db.media.delete(`chat_bg_${id}`)
   }
 
   const clearMessages = async (sessionId) => {
@@ -160,6 +204,17 @@ export function useChatSessions() {
       else session.lastMessage = message.content
       
       session.lastMessageTimestamp = message.timestamp
+
+      if (fullMsg.role === 'ai' && typeof document !== 'undefined' && document.hidden) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          let plainText = fullMsg.content.replace(/<[^>]+>/g, '').trim()
+          if (!plainText) plainText = '[收到新动态]'
+          new Notification(session.title || 'AI Phone', {
+            body: plainText,
+            icon: session.overrideAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=AI'
+          })
+        }
+      }
     }
   }
 
@@ -196,13 +251,21 @@ export function useChatSessions() {
   const deleteCssPreset = (id) => { cssPresets.value = cssPresets.value.filter(p => p.id !== id) }
 
   const addFriendRequest = (chatId, text) => {
-    if (!friendRequests.value.find(r => r.chatId === chatId)) {
-      friendRequests.value.unshift({ id: Date.now(), chatId, text: text || '请求添加你为好友', time: Date.now() })
+    let req = friendRequests.value.find(r => r.chatId === chatId)
+    if (req) {
+      req.messages = req.messages || [{ text: req.text, time: req.time }]
+      req.messages.push({ text: text || '请求添加你为好友', time: Date.now() })
+      req.time = Date.now()
+      friendRequests.value = friendRequests.value.filter(r => r.id !== req.id)
+      friendRequests.value.unshift(req)
+    } else {
+      friendRequests.value.unshift({ id: Date.now(), chatId, messages: [{ text: text || '请求添加你为好友', time: Date.now() }], time: Date.now() })
     }
   }
   const removeFriendRequest = (id) => {
     friendRequests.value = friendRequests.value.filter(r => r.id !== id)
   }
+  
   const acceptFriendRequest = (id) => {
     const req = friendRequests.value.find(r => r.id === id)
     if (req) {
@@ -210,32 +273,19 @@ export function useChatSessions() {
       if (chat) {
         chat.isBlocked = false
         chat.isBlockedByAi = false
+        pushMessage(req.chatId, { role: 'system', type: 'text', content: '[系统提示：User(我)已通过了你的好友验证。你现在可以正常发送消息了！]' })
       }
       removeFriendRequest(id)
     }
   }
 
   return { 
-    chatSessions,
-    sessions: chatSessions,
-    cssPresets,
-    activeMessages,
-    activeMemories,
-    friendRequests,
-    createSession,
-    deleteSession,
-    clearMessages,
-    loadSessionData,
-    pushMessage,
-    updateMessage,
-    removeMessages,
-    addMemory,
-    deleteMemory,
-    updateMemory,
-    saveCssPreset,
-    deleteCssPreset,
-    addFriendRequest,
-    removeFriendRequest,
-    acceptFriendRequest
+    chatSessions, sessions: chatSessions, cssPresets,
+    activeMessages, activeMemories, friendRequests,
+    createSession, deleteSession, clearMessages, loadSessionData,
+    pushMessage, updateMessage, removeMessages,
+    addMemory, deleteMemory, updateMemory,
+    saveCssPreset, deleteCssPreset,
+    addFriendRequest, removeFriendRequest, acceptFriendRequest
   }
 }

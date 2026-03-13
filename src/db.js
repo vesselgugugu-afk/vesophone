@@ -2,8 +2,8 @@ import Dexie from 'dexie'
 
 export const db = new Dexie('AIPhoneDB')
 
-// 升级数据库版本至 4，追加线下见面相关表
-db.version(4).stores({
+// 升级数据库版本至 5，追加 media 统一多媒体表
+db.version(5).stores({
   worldbooks: '++id, group, title, enabled',
   characters: '++id, name',
   personas: '++id, title, isActive',
@@ -13,14 +13,15 @@ db.version(4).stores({
   memories: 'id, sessionId, date',
 
   // 音乐模块专属表
-  musicLibrary: 'name', // 本地歌单库，主键为歌单名
-  musicStats: 'id',     // 听歌统计表，使用单例主键 'global'
+  musicLibrary: 'name', 
+  musicStats: 'id',     
 
   // 线下见面专属表
   offlineSessions: '++id, chatId, createTime',
-  offlineMessages: '++id, sessionId, floor, timestamp'
+  offlineMessages: '++id, sessionId, floor, timestamp',
+
+  // 核心新增：专门存储大体积图片的资源表
+  media: 'id' // 主键格式如 'char_123' 或 'chat_bg_456'
 })
 
 export default db
-
-

@@ -343,6 +343,7 @@ import { usePromptOrder } from '@/composables/usePromptOrder'
 import { useStatusPresets } from '@/composables/useStatusPresets'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import StickerManagerPage from './StickerManagerPage.vue'
+import db from '@/db'
 
 const props = defineProps({ show: Boolean, chat: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -353,6 +354,24 @@ const showAvatarAction = ref(false)
 
 const draft = ref({})
 const mockStatusText = ref('<statue_update>\n  <HP>100</HP>\n  <MOOD>开心</MOOD>\n</statue_update>\n\n<msg type="text">早上好呀！</msg>')
+
+// 极限压缩引擎，护城河级防御大体积图片
+const compressImage = (base64Str, maxWidth = 800) => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.src = base64Str
+    img.onload = () => {
+      if (img.width <= maxWidth) return resolve(base64Str)
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const ratio = maxWidth / img.width
+      canvas.width = maxWidth
+      canvas.height = img.height * ratio
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.8))
+    }
+  })
+}
 
 watch(() => props.show, (val) => {
   if (val) {
@@ -375,7 +394,7 @@ watch(() => props.show, (val) => {
 const { personas } = usePersona()
 const { stickerGroups } = useStickers()
 const { worldbooks } = useWorldbook()
-const { cssPresets, saveCssPreset, deleteCssPreset, clearMessages, deleteSession } = useChatSessions()
+const { cssPresets, saveCssPreset, deleteCssPreset, clearMessages, deleteSession, pushMessage } = useChatSessions()
 const { getCharById, saveCharacter } = useCharacters()
 const { buildCharacterPrompt } = usePromptOrder()
 
@@ -425,12 +444,27 @@ const toggleLocalWbGroup = (wbs, state) => {
   })
 }
 
-const handleSave = () => {
+// 核心增强：保存时剥离大图放入 DB，并且防 LocalStorage 爆满
+const handleSave = async () => {
+  const wasBlocked = props.chat.isBlocked
+  const isBlockedNow = draft.value.isBlocked
+  if (!wasBlocked && isBlockedNow) {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：User(我)无情地将对方拉黑了。]' })
+  } else if (wasBlocked && !isBlockedNow) {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：User(我)解除了对对方的拉黑。]' })
+  }
+
+  // IndexedDB 分发存储：独立存储专属头像和背景图
+  if (draft.value.overrideAvatar) await db.media.put({ id: `chat_avt_${props.chat.id}`, data: draft.value.overrideAvatar })
+  else await db.media.delete(`chat_avt_${props.chat.id}`)
+  
+  if (draft.value.bgImage) await db.media.put({ id: `chat_bg_${props.chat.id}`, data: draft.value.bgImage })
+  else await db.media.delete(`chat_bg_${props.chat.id}`)
+
   Object.assign(props.chat, draft.value)
   emit('close')
 }
 
-// 危险操作逻辑
 const handleClearMessages = async () => {
   if (confirm('确定要清空当前的聊天记录吗？此操作无法恢复，但会保留该聊天的长期记忆库。')) {
     await clearMessages(props.chat.id)
@@ -585,14 +619,16 @@ const clearAvatar = () => {
   draft.value.overrideAvatar = ''
 }
 
+// 核心更新：图像读取挂载压缩器
 const handleFileChange = (e) => {
   const file = e.target.files[0]
   if (!file) return
-  if (file.size > 2 * 1024 * 1024) return alert('图片过大，可能导致卡顿。')
   const reader = new FileReader()
-  reader.onload = (ev) => {
-    if (uploadTarget === 'avatar') draft.value.overrideAvatar = ev.target.result
-    if (uploadTarget === 'bg') draft.value.bgImage = ev.target.result
+  reader.onload = async (ev) => {
+    // 自动触发图像极限压缩，消除空间压力！
+    const compressed = await compressImage(ev.target.result, 800)
+    if (uploadTarget === 'avatar') draft.value.overrideAvatar = compressed
+    if (uploadTarget === 'bg') draft.value.bgImage = compressed
     fileInput.value.value = ''
   }
   reader.readAsDataURL(file)
@@ -639,3 +675,4 @@ const importCssPreset = () => {
 .wb-item-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #333; }
 .wb-item-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
+
