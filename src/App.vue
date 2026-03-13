@@ -106,10 +106,10 @@
           <div class="apps-grid" style="grid-template-columns: repeat(4, 1fr); height: auto;">
             <div class="app-icon" style="aspect-ratio: 1;" @click="activeApp = 'storage'">存储</div>
             
-            <!-- 新增：时光酒馆 (线下模式记录) -->
+            <!-- 新增：线下见面(线下模式记录) -->
             <div class="app-icon" style="aspect-ratio: 1; background: #f3e5f5; color: #9c27b0; display:flex; flex-direction:column; justify-content:center; align-items:center; font-size:12px; font-weight:600; border-radius:18px; box-shadow:0 4px 10px rgba(0,0,0,0.05);" @click="activeApp = 'offline'">
               <i class="fas fa-wine-glass-alt" style="font-size:24px; margin-bottom:6px;"></i>
-              时光酒馆
+              线下见面
             </div>
 
           </div>

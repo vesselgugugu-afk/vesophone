@@ -130,10 +130,10 @@ export function usePromptOrder() {
 【绝对禁止】：严禁在回复中使用星号或括号包裹任何动作描写，这看起来很奇怪。你只能通过打字、发图、转账、语音等线上行为交互。
 你必须将你要发送的内容用 <msg type="类型" 属性="值">内容</msg> 标签包裹。支持多个标签模拟连发。
 
-支持的 type 类型：
+支持的 msg type 类型：
 1. text: 纯文本。
 2. quote: 引用。必须带 ref="原话" 属性。
-3. recall: 撤回。内容写你想撤回的那句话。
+3. recall: 撤回。内容写你想撤回的那句话。不要再用text把你撤回的话再说一遍了。
 4. transfer: 发起转账。内容写备注。必须带 amount="金额" 属性。
 5. transfer_reply: 处理转账。内容空。必须带 action="accept" 或 action="reject" 属性。
 6. location: 发位置。内容写地名。
@@ -142,7 +142,12 @@ export function usePromptOrder() {
 9. sticker: 发表情包。已知你的表情包库：${stickerNames}
 10. music_share: 推荐音乐给用户。属性: name="歌名", artist="歌手"。内容写分享语。
 11. music_colisten_req: 邀请用户一起听歌。内容写邀请语。
-12. music_cmd: 音乐设备控制。属性: action="play", name="你要放的歌名", artist="歌手"。内容写你的播歌前摇语。(注意：仅在“一起听”状态下你才可以切歌！)`
+12. music_cmd: 音乐设备控制。属性: action="play", name="你要放的歌名", artist="歌手"。内容写你的播歌前摇语。你可以用这个指令切歌，只有一起听状态下才可以使用。不过切歌之前最好商量一下？毕竟对方也在听。
+13. sys_action: 主动隐秘系统行为。必须带 action="行为类型" 属性。如果行为需要附言，写在内容里。
+    - action="block": 你决定拉黑用户。内容空。
+    - action="unblock": 你决定解除拉黑。内容空。
+    - action="invite_meeting": 你主动邀请用户线下见面。内容空。
+    - action="add_friend": 发送好友验证请求加回。内容写你想对用户说的话。`
   }
 
   const buildCharacterPrompt = (char, chatVariablesState) => {
@@ -251,11 +256,18 @@ ${queueStr}
 你可以结合歌词回复，也可以把它当bgm继续聊。如果你有想听的歌，可以使用 <msg type="music_cmd" action="play"> 为用户切一首新歌。`
         }
 
-        // 核心更新：实时时间感知注入
         if (currentChat.settings?.realTimePerception) {
           const now = new Date()
           const timeStr = now.toLocaleString('zh-CN', { hour12: false, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
           baseProtocol += `\n\n[🕒 现实时间感知]\n当前的现实时间是：${timeStr}。请根据当前的时间给出合理的回复。`
+        }
+
+        // 核心注入：拦截双向拉黑状态的情景干预
+        if (currentChat.isBlocked) {
+          baseProtocol += `\n\n[🚨 状态提示] User已将你拉黑！你的常规文本消息将被User的系统拒收。你现在只能使用 <msg type="sys_action" action="add_friend">你的验证信息</msg> 试图加回他，或者使用 <msg type="sys_action" action="invite_meeting"></msg> 尝试邀请线下见面！`
+        }
+        if (currentChat.isBlockedByAi) {
+          baseProtocol += `\n\n[⚠️ 状态提示] 你目前已将 User 拉黑。你收不到他的普通消息，他尝试发送的信息已被系统全部拦截。除非他向你发送了好友验证。你可以选择继续冷战，如果你想解除对他的拉黑，请发送 <msg type="sys_action" action="unblock"></msg>。`
         }
         
         if (currentChat.settings?.promptSuffix && currentChat.settings.promptSuffix.trim() !== '') {
@@ -300,17 +312,32 @@ ${queueStr}
             const timePrefix = formatDate(m.timestamp || m.id) + ' '
             let prefix = '', cont = m.content
             
-            if (m.type === 'recalled') { prefix = '【撤回了一条消息】原内容：'; cont = m.oldContent || m.content }
-            else if (m.type === 'transfer') prefix = `【发起转账: ￥${m.amount}，状态: ${m.status}】备注：`
-            else if (m.type === 'voice') prefix = '【发了一条语音消息】原话：'
-            else if (m.type === 'image') prefix = '【发送图片】描述：'
-            else if (m.type === 'sticker') prefix = '【发送表情包】'
-            else if (m.type === 'location') prefix = '【发送位置】'
-            else if (m.type === 'quote') prefix = `【引用回复: "${m.refText}"】`
-            else if (m.type === 'lyric_share') prefix = `【分享了一句歌词："${m.text}"】来自歌曲《${m.song}》。附加语：`
-            else if (m.type === 'music_share') prefix = `【推荐了一首歌: 《${m.name}》- ${m.artist}】附加语：`
-            else if (m.type === 'music_colisten_req') prefix = `【发出了“一起听歌”邀请】`
-            else if (m.type === 'music_cmd') prefix = `【使用了切歌，换成了: 《${m.name}》】附加语：`
+            // 核心修改：在给大模型的上下文里，过滤掉用户的失败消息或加上拦截前缀
+            if (m.isFailed) {
+              prefix = `【User尝试发送，但因被拉黑而被系统拦截的消息】`
+            } else if (m.type === 'recalled') { 
+              prefix = '【撤回了一条消息】原内容：'; cont = m.oldContent || m.content 
+            } else if (m.type === 'transfer') {
+              prefix = `【发起转账: ￥${m.amount}，状态: ${m.status}】备注：`
+            } else if (m.type === 'voice') {
+              prefix = '【发了一条语音消息】原话：'
+            } else if (m.type === 'image') {
+              prefix = '【发送图片】描述：'
+            } else if (m.type === 'sticker') {
+              prefix = '【发送表情包】'
+            } else if (m.type === 'location') {
+              prefix = '【发送位置】'
+            } else if (m.type === 'quote') {
+              prefix = `【引用回复: "${m.refText}"】`
+            } else if (m.type === 'lyric_share') {
+              prefix = `【分享了一句歌词："${m.text}"】来自歌曲《${m.song}》。附加语：`
+            } else if (m.type === 'music_share') {
+              prefix = `【推荐了一首歌: 《${m.name}》- ${m.artist}】附加语：`
+            } else if (m.type === 'music_colisten_req') {
+              prefix = `【发出了“一起听歌”邀请】`
+            } else if (m.type === 'music_cmd') {
+              prefix = `【使用了切歌，换成了: 《${m.name}》】附加语：`
+            }
             
             return { role: m.role === 'ai' ? 'assistant' : 'user', content: timePrefix + prefix + cont }
           })

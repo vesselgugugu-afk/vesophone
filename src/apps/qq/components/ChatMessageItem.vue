@@ -143,6 +143,16 @@
           </template>
           
         </div>
+
+        <!-- 核心新增：发送失败的红色感叹号（巧妙利用 flex 排版置于气泡外侧） -->
+        <div v-if="msg.isFailed" style="display:flex; align-items:center;">
+          <i class="fas fa-exclamation-circle" style="color:#ff5252; font-size:18px; background:#fff; border-radius:50%;"></i>
+        </div>
+      </div>
+      
+      <!-- 核心新增：发送失败的绝望提示语（避开头像空间完美对齐气泡底部） -->
+      <div v-if="msg.isFailed && msg.role === 'user'" style="text-align:right; font-size:11px; color:#aaa; margin-top:6px; padding-right:50px;">
+        未发送成功，请添加对方好友
       </div>
     </div>
   </div>
@@ -178,7 +188,6 @@ const formatTime = (msg) => {
   return `${hours}:${mins}`
 }
 
-// 核心修复：这个编译器专门给替换用的，强制开启 `g` 标志！
 const buildRegexSafeForStrip = (patternStr) => {
   if (!patternStr) return null;
   let flags = 'g';
@@ -197,13 +206,11 @@ const buildRegexSafeForStrip = (patternStr) => {
   }
 }
 
-// 核心增强：历史垃圾清道夫
 const displayContent = computed(() => {
   if (props.msg.type !== 'text' && props.msg.type !== 'quote' && props.msg.type) return props.msg.content
   let txt = props.msg.content || ''
   
   if (props.msg.role === 'ai') {
-    // 1. 如果新数据不幸漏到 content 里，用当前正则干掉
     if (props.chat?.settings?.regexPattern) {
       try {
         const baseRegex = buildRegexSafeForStrip(props.chat.settings.regexPattern);
@@ -211,7 +218,6 @@ const displayContent = computed(() => {
       } catch (e) {}
     }
 
-    // 2. 无差别清道夫：针对老记录的格式，强行吃掉它们！
     txt = txt.replace(/```[\s\S]*?```/g, '');
     txt = txt.replace(/<[a-zA-Z0-9_]+>\s*\[[\s\S]*?\]\s*<\/[a-zA-Z0-9_]+>/g, '');
     txt = txt.replace(/\[\s*(?:[a-zA-Z0-9_]+[=|\|][\s\S]*?){2,}\]/g, '');

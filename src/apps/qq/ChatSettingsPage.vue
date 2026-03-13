@@ -147,7 +147,6 @@
           </div>
         </div>
 
-        <!-- 核心更新：增强感知系统 -->
         <div style="background:#fff; border-radius:14px; padding:15px; display:flex; flex-direction:column; gap:15px;">
           <div style="font-weight:600; font-size:13px; color:var(--text-main);">增强感知系统</div>
           
@@ -157,6 +156,19 @@
               <div style="font-size:10px; color:#888; margin-top:4px;">将现实系统时间动态注入给AI，让其具备时间感</div>
             </div>
             <ToggleSwitch v-model="draft.settings.realTimePerception" />
+          </div>
+        </div>
+
+        <!-- 黑名单控制 -->
+        <div style="background:#fff; border-radius:14px; padding:15px; display:flex; flex-direction:column; gap:15px;">
+          <div style="font-weight:600; font-size:13px; color:#ff5252;">黑名单管理</div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:13px; color:var(--text-main);">将对方拉黑</div>
+              <div style="font-size:10px; color:#888; margin-top:4px;">拉黑后，对方将被限制发送消息并受到系统警告</div>
+            </div>
+            <ToggleSwitch v-model="draft.isBlocked" />
           </div>
         </div>
 
@@ -171,6 +183,28 @@
             <input type="number" class="ins-input" style="background:#f4f5f7; border-radius:8px; padding:10px;" v-model="draft.settings.contextMessageCount" placeholder="20" />
           </div>
         </div>
+
+        <!-- 危险操作区 -->
+        <div style="background:#fff; border-radius:14px; padding:15px; display:flex; flex-direction:column; gap:15px; margin-top:5px; border:1px solid rgba(255,82,82,0.2);">
+          <div style="font-weight:600; font-size:13px; color:#ff5252;">危险操作</div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:13px; color:var(--text-main);">清空聊天记录</div>
+              <div style="font-size:10px; color:#888; margin-top:4px;">保留角色状态与长期记忆库</div>
+            </div>
+            <button class="btn-cancel" style="padding:6px 12px; font-size:11px; border-radius:8px; color:#ff5252; border-color:#ff5252;" @click="handleClearMessages">清空</button>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:13px; color:var(--text-main);">删除当前聊天</div>
+              <div style="font-size:10px; color:#888; margin-top:4px;">彻底删除该聊天会话与所有记忆</div>
+            </div>
+            <button style="padding:6px 12px; font-size:11px; border-radius:8px; background:#ff5252; color:#fff; border:none;" @click="handleDeleteChat">删除</button>
+          </div>
+        </div>
+
       </div>
 
       <!-- Tab 3: 状态栏与动态 UI 引擎 -->
@@ -329,8 +363,10 @@ watch(() => props.show, (val) => {
     if (draft.value.settings.regexPattern === undefined) draft.value.settings.regexPattern = ''
     if (draft.value.settings.replacePattern === undefined) draft.value.settings.replacePattern = ''
     if (draft.value.settings.statusContextCount === undefined) draft.value.settings.statusContextCount = 1 
-    if (draft.value.settings.realTimePerception === undefined) draft.value.settings.realTimePerception = false // 初始化时间感知开关
+    if (draft.value.settings.realTimePerception === undefined) draft.value.settings.realTimePerception = false 
     if (!draft.value.boundWorldbookIds) draft.value.boundWorldbookIds = []
+
+    if (draft.value.isBlocked === undefined) draft.value.isBlocked = false
     
     activeTab.value = 'basic'
   }
@@ -339,7 +375,7 @@ watch(() => props.show, (val) => {
 const { personas } = usePersona()
 const { stickerGroups } = useStickers()
 const { worldbooks } = useWorldbook()
-const { cssPresets, saveCssPreset, deleteCssPreset } = useChatSessions()
+const { cssPresets, saveCssPreset, deleteCssPreset, clearMessages, deleteSession } = useChatSessions()
 const { getCharById, saveCharacter } = useCharacters()
 const { buildCharacterPrompt } = usePromptOrder()
 
@@ -392,6 +428,23 @@ const toggleLocalWbGroup = (wbs, state) => {
 const handleSave = () => {
   Object.assign(props.chat, draft.value)
   emit('close')
+}
+
+// 危险操作逻辑
+const handleClearMessages = async () => {
+  if (confirm('确定要清空当前的聊天记录吗？此操作无法恢复，但会保留该聊天的长期记忆库。')) {
+    await clearMessages(props.chat.id)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '聊天记录已清空' }))
+    emit('close')
+  }
+}
+
+const handleDeleteChat = async () => {
+  if (confirm('警告：确定要彻底删除当前聊天吗？\n所有相关的聊天记录和长期记忆将被永久抹除！')) {
+    await deleteSession(props.chat.id)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '聊天会话已删除' }))
+    emit('close')
+  }
 }
 
 const saveCurrentVarsToPreset = () => {

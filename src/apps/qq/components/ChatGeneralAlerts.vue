@@ -18,6 +18,8 @@
   <div class="ios-alert-mask" v-if="alert.show" @click.self="$emit('close-alert')">
     <div class="ios-alert">
       <i v-if="alert.type === 'receive_transfer'" class="fas fa-exchange-alt transfer-icon-large"></i>
+      <i v-if="alert.type === 'invite_meeting'" class="fas fa-coffee" style="font-size:40px; color:#ff9f43; margin-top:25px;"></i>
+      
       <div class="ios-alert-title">{{ alert.title }}</div>
       
       <div class="ios-alert-desc" v-if="alert.type === 'view_recall'">{{ alert.desc }}</div>
@@ -35,6 +37,10 @@
           <div class="ios-alert-btn" @click="$emit('close-alert')">取消</div>
           <div class="ios-alert-btn danger" @click="$emit('confirm-transfer', 'reject')">退回</div>
           <div class="ios-alert-btn bold" @click="$emit('confirm-transfer', 'accept')">领取</div>
+        </template>
+        <template v-else-if="alert.type === 'invite_meeting'">
+          <div class="ios-alert-btn" style="color:#888;" @click="$emit('confirm-meeting', false)">拒绝</div>
+          <div class="ios-alert-btn bold" style="color:#ff5252;" @click="$emit('confirm-meeting', true)">接受</div>
         </template>
         <template v-else>
           <div class="ios-alert-btn" @click="$emit('close-alert')">取消</div>
@@ -72,7 +78,8 @@ defineEmits([
   'copy-error',
   'confirm-transfer',
   'confirm-general',
-  'confirm-summary'
+  'confirm-summary',
+  'confirm-meeting'
 ])
 </script>
 
@@ -89,5 +96,6 @@ defineEmits([
 .ios-alert-btn:active { background: rgba(0,0,0,0.05); }
 .ios-alert-btn.bold { font-weight: 600; }
 .ios-alert-btn.danger { color: #ff3b30; }
+.transfer-icon-large { font-size: 30px; color: #ff9f43; margin-top: 25px; }
 .error-textarea { width: 100%; height: 150px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 10px; font-size: 12px; color: #ff5252; outline: none; resize: none; font-family: monospace; }
 </style>

@@ -12,8 +12,10 @@
     |   |-- index.html
     |   |-- assets
     |       |-- index-9qaT2RjD.js
+    |       |-- index-B9J7C0jl.css
     |       |-- index-BhxYOy7v.js
     |       |-- index-BO-rNdc9.js
+    |       |-- index-C86z8SYp.js
     |       |-- index-CKkQOlpP.js
     |       |-- index-DASBRLLz.css
     |       |-- index-DDrNGO1C.css
@@ -45,6 +47,14 @@
         |   |       |-- PlaylistDrawer.vue
         |   |       |-- SearchPanel.vue
         |   |       |-- StatsModal.vue
+        |   |-- offline
+        |   |   |-- MeetingRoom.vue
+        |   |   |-- OfflineApp.vue
+        |   |   |-- OfflinePromptOrderPage.vue
+        |   |   |-- components
+        |   |       |-- ExitSummaryModal.vue
+        |   |       |-- MeetingCard.vue
+        |   |       |-- QuickConfigBar.vue
         |   |-- qq
         |   |   |-- CharacterEditorPage.vue
         |   |   |-- ChatDetail.vue
@@ -68,6 +78,7 @@
         |   |       |-- ChatGeneralAlerts.vue
         |   |       |-- ChatHeader.vue
         |   |       |-- ChatMessageItem.vue
+        |   |       |-- ChatMusicModals.vue
         |   |-- storage
         |   |   |-- StorageApp.vue
         |   |-- worldbook
@@ -86,6 +97,8 @@
         |   |-- useChatSessions.js
         |   |-- useMusic.js
         |   |-- useMusicApi.js
+        |   |-- useOffline.js
+        |   |-- useOfflinePrompt.js
         |   |-- usePersona.js
         |   |-- useProfile.js
         |   |-- usePromptOrder.js

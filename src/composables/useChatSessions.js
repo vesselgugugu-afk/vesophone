@@ -3,6 +3,7 @@ import db from '@/db'
 
 const KEY = 'chatSessions'
 const KEY_CSS = 'chatCssPresets'
+const KEY_FRIENDS = 'friendRequests'
 
 const load = (key, def) => {
   const s = localStorage.getItem(key)
@@ -35,10 +36,14 @@ rawData.forEach(chat => {
   if (chat.bgImage === undefined) chat.bgImage = ''
   
   if (!chat.variablesState) chat.variablesState = {}
+
+  if (chat.isBlocked === undefined) chat.isBlocked = false
+  if (chat.isBlockedByAi === undefined) chat.isBlockedByAi = false
 })
 
 const chatSessions = ref(rawData)
 const cssPresets = ref(load(KEY_CSS, []))
+const friendRequests = ref(load(KEY_FRIENDS, []))
 
 const activeMessages = ref([])
 const activeMemories = ref([])
@@ -66,6 +71,7 @@ if (!localStorage.getItem('dbMigrated_v2')) {
 
 watch(chatSessions, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
 watch(cssPresets, (v) => localStorage.setItem(KEY_CSS, JSON.stringify(v)), { deep: true })
+watch(friendRequests, (v) => localStorage.setItem(KEY_FRIENDS, JSON.stringify(v)), { deep: true })
 
 export function useChatSessions() {
   const createSession = (selectedChars) => {
@@ -99,7 +105,9 @@ export function useChatSessions() {
       boundWorldbookIds: [],
       customCss: '',
       bgImage: '',
-      variablesState: initialVars
+      variablesState: initialVars,
+      isBlocked: false,
+      isBlockedByAi: false
     }
     chatSessions.value.unshift(newChat)
     return newChat
@@ -109,6 +117,18 @@ export function useChatSessions() {
     chatSessions.value = chatSessions.value.filter((c) => c.id !== id)
     await db.messages.where({ sessionId: id }).delete()
     await db.memories.where({ sessionId: id }).delete()
+  }
+
+  const clearMessages = async (sessionId) => {
+    await db.messages.where({ sessionId }).delete()
+    if (activeSessionId === sessionId) {
+      activeMessages.value = []
+    }
+    const session = chatSessions.value.find((c) => c.id === sessionId)
+    if (session) {
+      session.lastMessage = '[聊天记录已清空]'
+      session.lastMessageTimestamp = Date.now()
+    }
   }
 
   const loadSessionData = async (sessionId) => {
@@ -123,7 +143,6 @@ export function useChatSessions() {
     
     const fullMsg = { ...message, sessionId }
     
-    // 核心修复：总是写入数据库，但只有当前激活的会话才更新界面
     await db.messages.add(fullMsg)
     
     if (activeSessionId === sessionId) {
@@ -176,14 +195,36 @@ export function useChatSessions() {
   const saveCssPreset = (name, css) => cssPresets.value.push({ id: Date.now(), name, css })
   const deleteCssPreset = (id) => { cssPresets.value = cssPresets.value.filter(p => p.id !== id) }
 
+  const addFriendRequest = (chatId, text) => {
+    if (!friendRequests.value.find(r => r.chatId === chatId)) {
+      friendRequests.value.unshift({ id: Date.now(), chatId, text: text || '请求添加你为好友', time: Date.now() })
+    }
+  }
+  const removeFriendRequest = (id) => {
+    friendRequests.value = friendRequests.value.filter(r => r.id !== id)
+  }
+  const acceptFriendRequest = (id) => {
+    const req = friendRequests.value.find(r => r.id === id)
+    if (req) {
+      const chat = chatSessions.value.find(c => c.id === req.chatId)
+      if (chat) {
+        chat.isBlocked = false
+        chat.isBlockedByAi = false
+      }
+      removeFriendRequest(id)
+    }
+  }
+
   return { 
     chatSessions,
-    sessions: chatSessions, // 同时导出 sessions 别名，供 MusicApp 使用
+    sessions: chatSessions,
     cssPresets,
     activeMessages,
     activeMemories,
+    friendRequests,
     createSession,
     deleteSession,
+    clearMessages,
     loadSessionData,
     pushMessage,
     updateMessage,
@@ -192,6 +233,9 @@ export function useChatSessions() {
     deleteMemory,
     updateMemory,
     saveCssPreset,
-    deleteCssPreset
+    deleteCssPreset,
+    addFriendRequest,
+    removeFriendRequest,
+    acceptFriendRequest
   }
 }

@@ -46,7 +46,26 @@
       </div>
     </div>
 
+    <!-- 用户主动拉黑对方的 UI（隐藏输入框，提供视奸按钮） -->
+    <div v-if="chat.isBlocked" style="padding:15px; text-align:center; color:#888; font-size:13px; background:#f4f5f7; z-index:20; box-shadow:0 -2px 10px rgba(0,0,0,0.05);">
+      <div style="margin-bottom:12px;">你已将对方拉黑，<span style="color:#5c8aff; cursor:pointer;" @click="chat.isBlocked = false">点击解除</span></div>
+      <button class="btn-send" style="padding:8px 20px; font-size:12px; border-radius:12px; font-weight:600;" @click="triggerAiReply">
+        <i class="fas fa-eye"></i> 视奸 (唤起对方动作)
+      </button>
+    </div>
+    
+    <!-- 被对方拉黑时的功能悬浮条（保留输入框给用户看感叹号） -->
+    <div v-if="chat.isBlockedByAi" style="padding:10px 15px; text-align:center; background:#fff2f2; z-index:20; border-top: 1px solid #ffcccc; display:flex; justify-content:center; gap:10px;">
+      <button style="padding:6px 12px; font-size:12px; border-radius:12px; background:#ff5252; color:#fff; border:none; font-weight:600;" @click="sendFriendRequestToAi">
+        <i class="fas fa-user-plus"></i> 发送好友申请
+      </button>
+      <button style="padding:6px 12px; font-size:12px; border-radius:12px; background:#fff; color:#666; border:1px solid #ddd;" @click="triggerAiReply">
+        <i class="fas fa-hourglass-half"></i> 等待对方动作...
+      </button>
+    </div>
+
     <ChatBottomBar 
+      v-show="!chat.isBlocked"
       :chat="chat"
       :musicState="musicState"
       :isSelectionMode="isSelectionMode"
@@ -89,6 +108,7 @@
       @confirm-transfer="confirmReceiveTransfer"
       @confirm-general="handleAlertConfirm"
       @confirm-summary="confirmAutoSummary"
+      @confirm-meeting="handleMeetingConfirm"
     />
 
     <ChatActionSheet 
@@ -140,7 +160,7 @@ const emit = defineEmits(['exit', 'edit-character'])
 
 const { apiUrl, apiKey, apiModel } = useApi()
 const { buildApiMessages } = usePromptOrder()
-const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories } = useChatSessions()
+const { activeMessages, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, activeMemories, addFriendRequest } = useChatSessions()
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
 const { musicState, loadSong, toggleCoListen, playSpecific } = useMusic()
@@ -262,6 +282,26 @@ const startOfflineMeeting = () => {
   window.dispatchEvent(new CustomEvent('open-offline-meeting', { detail: { chat: props.chat } }))
 }
 
+const handleMeetingConfirm = (accept) => {
+  if (accept) {
+    startOfflineMeeting()
+  } else {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '你拒绝了线下见面邀请' })
+  }
+  alert.value.show = false
+  scrollToBottom()
+}
+
+// 被拉黑后主动申请加回
+const sendFriendRequestToAi = () => {
+  const txt = prompt('输入你想对TA说的验证消息：', '我是...')
+  if (txt !== null) {
+    pushMessage(props.chat.id, { role: 'user', type: 'text', content: `[发起好友验证]：${txt}` })
+    scrollToBottom()
+    setTimeout(() => { triggerAiReply() }, 800)
+  }
+}
+
 const handleSendText = (txt) => {
   const msgObj = { 
     role: 'user', 
@@ -271,24 +311,32 @@ const handleSendText = (txt) => {
   if (quotingText.value) {
     msgObj.refText = quotingText.value
   }
+  // 核心注入：对方拉黑你的情况下强行置红叹号
+  if (props.chat.isBlockedByAi) {
+    msgObj.isFailed = true
+  }
   pushMessage(props.chat.id, msgObj)
   quotingText.value = ''
   scrollToBottom()
 }
 
 const sendSticker = (name) => { 
-  pushMessage(props.chat.id, { role: 'user', type: 'sticker', content: name })
+  const msgObj = { role: 'user', type: 'sticker', content: name }
+  if (props.chat.isBlockedByAi) msgObj.isFailed = true
+  pushMessage(props.chat.id, msgObj)
   scrollToBottom() 
 }
 
 const sendMusicShare = (song) => { 
-  pushMessage(props.chat.id, { 
+  const msgObj = { 
     role: 'user', 
     type: 'music_share', 
     name: song.name, 
     artist: song.artist, 
     content: '我想和你分享这首歌~' 
-  })
+  }
+  if (props.chat.isBlockedByAi) msgObj.isFailed = true
+  pushMessage(props.chat.id, msgObj)
   showLocalMusicPicker.value = false
   scrollToBottom() 
 }
@@ -446,14 +494,17 @@ const openMenuAlert = (type) => {
 const handleAlertConfirm = () => {
   const t = alert.value.type
   const vals = alert.value.inputs.map(i => i.value)
+  const baseObj = { role: 'user' }
+  if (props.chat.isBlockedByAi) baseObj.isFailed = true
+  
   if (t === 'transfer' && vals[0]) {
-    pushMessage(props.chat.id, { role: 'user', type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
+    pushMessage(props.chat.id, { ...baseObj, type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
   } else if (t === 'location' && vals[0]) {
-    pushMessage(props.chat.id, { role: 'user', type: 'location', content: vals[0] })
+    pushMessage(props.chat.id, { ...baseObj, type: 'location', content: vals[0] })
   } else if (t === 'voice' && vals[0]) {
-    pushMessage(props.chat.id, { role: 'user', type: 'voice', content: vals[0], showText: false })
+    pushMessage(props.chat.id, { ...baseObj, type: 'voice', content: vals[0], showText: false })
   } else if (t === 'image' && vals[0]) {
-    pushMessage(props.chat.id, { role: 'user', type: 'image', content: vals[0] })
+    pushMessage(props.chat.id, { ...baseObj, type: 'image', content: vals[0] })
   }
   alert.value.show = false
   scrollToBottom()
@@ -656,6 +707,39 @@ const triggerAiReply = async () => {
         const mArtist = attrs.artist || ''
         let mContent = m[1].trim()
         
+        if (mType === 'sys_action') {
+          if (mAction === 'block') {
+            props.chat.isBlockedByAi = true
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '对方开启了好友验证，你还不是他(她)朋友。请先发送朋友验证请求，对方验证通过后，才能聊天。' })
+          } else if (mAction === 'unblock') {
+            props.chat.isBlockedByAi = false
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '对方已将你移出黑名单。' })
+          } else if (mAction === 'invite_meeting') {
+            // 核心修改：触发美观的线下邀约弹窗
+            alert.value = {
+              show: true,
+              type: 'invite_meeting',
+              title: '线下邀约',
+              desc: `${props.chat.title} 突然邀请你线下见面，是否接受？`,
+              inputs: null
+            }
+          } else if (mAction === 'add_friend') {
+            addFriendRequest(props.chat.id, mContent)
+            window.dispatchEvent(new CustomEvent('sys-toast', { detail: '收到了一条新的好友申请验证' }))
+            if (props.chat.isBlocked) {
+              pushMessage(props.chat.id, { role: 'system', type: 'text', content: `[拦截的对方动作] 对方尝试发来好友验证请求：${mContent}` })
+            }
+          }
+          return 
+        }
+
+        if (props.chat.isBlocked && mType !== 'sys_action') {
+          if (mType === 'text') mContent = `[被系统拦截] ${mContent}`
+          else if (mType === 'voice') mContent = `[拦截的对方语音] ${mContent}`
+          else if (mType === 'image') mContent = `[拦截的对方图片] ${mContent}`
+          else if (mType === 'transfer') mContent = `[拦截的对方转账] ${mContent}`
+        }
+
         const tempId = Date.now() + Math.random()
         
         const baseMsgObj = { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent }
@@ -690,6 +774,7 @@ const triggerAiReply = async () => {
         }
       })
     } else if (rawText.length > 0) {
+      if (props.chat.isBlocked) rawText = `[被系统拦截] ${rawText}`
       pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
     }
     

@@ -12,17 +12,19 @@ export function useOffline() {
   }
 
   const createOrLoadSession = async (chatId, chatTitle) => {
-    // 查找该角色今天是否已经有未完成的见面记录，这里简化为每次从 QQ 进入都创建新记录
-    // 也可以扩展为找最近的一条。目前我们采用每次点击都开辟一次新见面的逻辑。
     const newSession = {
       chatId,
       chatTitle,
       createTime: Date.now(),
       bgImage: '',
+      lastSummarizedFloor: 0, // 核心新增：记录上次总结到了哪一楼
       config: {
-        wordCount: 150,
-        antiRepeat: true,
-        stylePrompt: '细腻的环境描写，注重人物的神态与微表情。'
+        wordCountMin: 150,
+        wordCountMax: 300,
+        antiRepeatPrompt: '绝对禁止抢话！禁止复述User的动作和语言！绝不要替User做决定，只描写你自己的反应和话语。',
+        stylePrompt: '细腻的环境描写，注重人物的神态与微表情。',
+        autoSummaryCount: 0,
+        summaryPrompt: '请将以下线下见面的扮演记录总结为一段第一人称（我）视角的日记/记忆。要求保留重要的设定、情感进展和发生的事，字数在 150-300 字左右。'
       }
     }
     const id = await db.offlineSessions.add(newSession)
@@ -51,6 +53,12 @@ export function useOffline() {
     if (!currentSession.value) return
     currentSession.value.bgImage = bgUrl
     await db.offlineSessions.update(currentSession.value.id, { bgImage: bgUrl })
+  }
+
+  const updateSessionLastSummarizedFloor = async (floor) => {
+    if (!currentSession.value) return
+    currentSession.value.lastSummarizedFloor = floor
+    await db.offlineSessions.update(currentSession.value.id, { lastSummarizedFloor: floor })
   }
 
   const addOfflineMessage = async (msgObj) => {
@@ -83,7 +91,9 @@ export function useOffline() {
     loadSessionById,
     updateSessionConfig,
     updateSessionBg,
+    updateSessionLastSummarizedFloor,
     addOfflineMessage,
     deleteSession
   }
 }
+
