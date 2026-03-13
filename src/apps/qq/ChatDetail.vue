@@ -52,11 +52,7 @@
       </div>
     </div>
 
-    <div v-if="isBlocked" style="padding: 20px; text-align: center; color: #888; background: #f4f5f7; font-size: 13px; font-weight:600; padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 10;">
-      对方已被拉黑，无法发送消息
-    </div>
     <ChatBottomBar 
-      v-else
       :chat="chat"
       :musicState="musicState"
       :isSelectionMode="isSelectionMode"
@@ -186,13 +182,7 @@
     </div>
 
     <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
-    <ChatSettingsPage 
-      :show="showSettings" 
-      :chat="chat" 
-      @close="showSettings = false" 
-      @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" 
-      @delete-chat="$emit('exit')"
-    />
+    <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
     <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
     <SummaryPanel :show="showSummaryPanel" :chat="chat" @close="showSummaryPanel = false" />
     <StatusPanel :show="showStatusPanel" :msg="activeStatusMsg" :chat="chat" @close="showStatusPanel = false" />
@@ -249,12 +239,6 @@ const activeStatusMsg = ref(null)
 
 const quotingText = ref('')
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
-
-const isBlocked = computed(() => {
-  if (props.chat.isGroup || props.chat.participants.length === 0) return false;
-  const char = getCharById(props.chat.participants[0].id);
-  return char?.isBlocked || false;
-})
 
 onMounted(async () => { 
   await loadSessionData(props.chat.id)
@@ -631,10 +615,14 @@ const triggerAiReply = async () => {
   try {
     if (!apiKey.value) throw new Error('未设置 API 密钥')
     
+    // 核心更新：发往 AI 前的记忆截断拦截器
     const contextLimit = Number(props.chat.settings?.statusContextCount ?? 1);
     let aiMsgCount = 0;
+    
+    // 深拷贝消息数组，防止污染前端视图
     const messagesForApi = activeMessages.value.map(m => ({ ...m }));
     
+    // 从后往前扫，只将最近指定的 N 条状态信息附着在 content 上发给 AI
     for (let i = messagesForApi.length - 1; i >= 0; i--) {
       const msg = messagesForApi[i];
       if (msg.role === 'ai') {
