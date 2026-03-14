@@ -5,7 +5,7 @@ const KEY = 'diaryCardStylePresets'
 const defaultPresets = [
   { 
     id: 'diary_preset_wechat', 
-    name: '微信读书风', 
+    name: '微信读书', 
     layout: 'wechat',
     css: `
 @import url("https://fontsapi.zeoseven.com/256/main/result.css");
@@ -48,7 +48,7 @@ const defaultPresets = [
   },
   { 
     id: 'diary_preset_letter', 
-    name: '朱丝栏信笺', 
+    name: '朱丝信笺', 
     layout: 'letter',
     css: `
 @font-face { font-family: 'CustomLetterFont'; src: url('https://files.catbox.moe/wj9hrt.ttf') format('truetype'); }
@@ -64,7 +64,7 @@ const defaultPresets = [
   },
   { 
     id: 'diary_preset_magazine', 
-    name: '杂志每日一记', 
+    name: '每日一记', 
     layout: 'magazine',
     css: `
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&family=Noto+Serif+SC:wght@400;600&display=swap");
