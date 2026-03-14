@@ -417,7 +417,7 @@ const appBackgroundStyle = computed(() => {
 .screens-wrapper::-webkit-scrollbar { display: none; }
 .screen { min-width: 100%; height: 100%; scroll-snap-align: start; }
 
-.desktop-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 76px; gap: 15px 12px; padding: 10px 20px 20px; align-content: start; height: 100%; box-sizing: border-box; }
+.desktop-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 76px; gap: 15px 12px; padding: 0px 20px 36px; align-content: start; height: 100%; box-sizing: border-box; }
 .size-1x1 { grid-column: span 1; grid-row: span 1; }
 .size-2x1 { grid-column: span 2; grid-row: span 1; }
 .size-2x2 { grid-column: span 2; grid-row: span 2; }

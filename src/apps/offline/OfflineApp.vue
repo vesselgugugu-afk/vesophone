@@ -184,7 +184,7 @@ const closeSessionAndExit = () => {
 </script>
 
 <style scoped>
-.app-window { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
+.app-window { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; }
 .app-header { display: flex; justify-content: space-between; align-items: center; padding: env(safe-area-inset-top, 40px) 15px 15px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 10; flex-shrink: 0; }
 .btn-back { color: var(--text-main); font-size: 15px; font-weight: 600; cursor: pointer; }
 .app-title { font-size: 16px; font-weight: 700; color: #333; }

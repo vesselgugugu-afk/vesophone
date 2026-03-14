@@ -299,12 +299,12 @@ const handleExitDirect = () => {
 </script>
 
 <style scoped>
-.meeting-room-container { display: flex; flex-direction: column; width: 100%; height: 100%; background-size: cover; background-position: center; position: relative; }
+.meeting-room-container { display: flex; flex-direction: column; width: 100%; height: 100%; background-size: cover; background-position: center; position: relative; padding-top: env(safe-area-inset-top, 40px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
 .bg-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); pointer-events: none; z-index: 1; }
-.room-header { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: env(safe-area-inset-top, 40px) 15px 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent); }
+.room-header { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: 15px 15px 15px; background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent); }
 .header-btn { color: #fff; font-size: 13px; background: rgba(255,255,255,0.2); padding: 6px 12px; border-radius: 20px; backdrop-filter: blur(5px); cursor: pointer; display: flex; align-items: center; gap: 5px; }
 .room-title { color: #fff; font-size: 15px; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-.card-area { flex: 1; position: relative; z-index: 2; overflow-y: auto; padding: 0 15px; }
+.card-area { flex: 1; position: relative; z-index: 2; overflow-y: auto; padding: 70px 15px 0; }
 .empty-state { text-align: center; color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 100px; }
 .room-footer { position: relative; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 15px 15px calc(15px + env(safe-area-inset-bottom, 0px)); background: rgba(255,255,255,0.1); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border-top: 1px solid rgba(255,255,255,0.2); }
 .footer-btn { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.2); color: #fff; display: flex; justify-content: center; align-items: center; font-size: 16px; cursor: pointer; }
@@ -322,3 +322,4 @@ const handleExitDirect = () => {
 .ios-action-cancel { background: #fff; border-radius: 14px; padding: 15px; text-align: center; font-size: 16px; font-weight: 600; color: #007aff; cursor: pointer; }
 .ios-action-cancel:active { background: #f0f0f0; }
 </style>
+
