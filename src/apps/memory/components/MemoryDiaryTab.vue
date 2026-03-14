@@ -2,7 +2,6 @@
   <div class="diary-tab">
     <div class="dropdown-mask" v-if="activeDropdown" @click="activeDropdown = null"></div>
 
-    <!-- 顶部筛选栏 -->
     <div class="diary-filters">
       <div class="dropdown-wrapper">
         <div class="filter-pill" :class="{ 'is-active': filterLevel !== 'all' || activeDropdown === 'level' }" @click="toggleDropdown('level')">
@@ -42,7 +41,6 @@
       <button class="btn-ghost" @click="toggleOrganize">{{ organizeMode ? '取消整理' : '整理记忆' }}</button>
     </div>
 
-    <!-- 右侧吸顶时间轴 -->
     <div class="scrubber-track" v-if="monthOptions.length > 1">
       <div class="scrubber">
         <span 
@@ -56,7 +54,6 @@
 
     <div v-if="filteredDiaries.length === 0" class="empty-tip">暂无起居注</div>
 
-    <!-- 日记列表渲染 -->
     <div v-for="(group, key) in groupedDiaries" :key="key" class="folder-group" :id="`month-${key}`">
       <div class="folder-tab" :class="{ 'is-collapsed': collapsedMonths.includes(key) }" @click="toggleMonthCollapse(key)">
         <span class="folder-title">{{ key }}</span>
@@ -101,294 +98,280 @@
       生成回忆 (已选 {{ selectedIds.length }} 篇)
     </button>
 
-    <!-- ==========================================
-         核心修复：利用 Vue 3 Teleport 将所有弹窗传送至 body，
-         彻底摆脱滚动容器的层叠遮挡！
-    =========================================== -->
-    <Teleport to="body">
+    <!-- 增强版编辑弹窗 (利用深层 CSS 穿透强制置顶，解决被遮挡问题) -->
+    <InnerModal :show="showEdit" @close="showEdit = false" class="forced-top-modal">
+      <div class="modal-title">编辑起居注排版</div>
+      
+      <input class="modal-input" v-model="draft.title" placeholder="标题 / 物品名称" />
+      <textarea class="modal-textarea" v-model="draft.content" placeholder="正文内容" style="height:100px;"></textarea>
+      
+      <div class="modal-hint" style="margin-top:12px;">排版样式预设</div>
+      <select class="custom-select" style="width:100%;" v-model="draft.cardStyleId">
+        <option value="">基础纯净版式 (无预设)</option>
+        <option v-for="p in diaryPresets" :key="p.id" :value="p.id">{{ p.name }} ({{ p.layout }})</option>
+      </select>
 
-      <!-- 增强版编辑弹窗 -->
-      <InnerModal :show="showEdit" @close="showEdit = false">
-        <div class="modal-title">编辑起居注排版</div>
+      <template v-if="needsImage">
+        <div class="modal-hint" style="margin-top:12px;">卡片配图 (URL)</div>
+        <input class="modal-input" v-model="draft.imageUrl" placeholder="https://..." />
         
-        <input class="modal-input" v-model="draft.title" placeholder="标题 / 物品名称" />
-        <textarea class="modal-textarea" v-model="draft.content" placeholder="正文内容" style="height:100px;"></textarea>
-        
-        <div class="modal-hint" style="margin-top:12px;">排版样式预设</div>
-        <select class="custom-select" style="width:100%;" v-model="draft.cardStyleId">
-          <option value="">基础纯净版式 (无预设)</option>
-          <option v-for="p in diaryPresets" :key="p.id" :value="p.id">{{ p.name }} ({{ p.layout }})</option>
-        </select>
+        <div class="modal-hint">或 上传本地配图</div>
+        <button class="btn-cancel" @click="triggerUpload" style="width:100%;">选择图片</button>
+        <input ref="fileInput" type="file" accept="image/*" style="display:none" @change="handleUpload" />
+      </template>
 
-        <template v-if="needsImage">
-          <div class="modal-hint" style="margin-top:12px;">卡片配图 (URL)</div>
-          <input class="modal-input" v-model="draft.imageUrl" placeholder="https://..." />
-          
-          <div class="modal-hint">或 上传本地配图</div>
-          <button class="btn-cancel" @click="triggerUpload" style="width:100%;">选择图片</button>
-          <input ref="fileInput" type="file" accept="image/*" style="display:none" @change="handleUpload" />
-        </template>
-
-        <div style="display:flex; gap:15px; margin-top:16px;">
-          <div style="flex:1;">
-            <div class="modal-hint">类型 (Tag)</div>
-            <input class="modal-input" v-model="draft.type" placeholder="daily/其他" />
-          </div>
-          <div style="flex:1;">
-            <div class="modal-hint">级别 (1-3)</div>
-            <input class="modal-input" type="number" min="1" max="3" v-model.number="draft.level" />
-          </div>
+      <div style="display:flex; gap:15px; margin-top:16px;">
+        <div style="flex:1;">
+          <div class="modal-hint">类型 (Tag)</div>
+          <input class="modal-input" v-model="draft.type" placeholder="daily/其他" />
         </div>
-
-        <div class="modal-hint">归档状态</div>
-        <div class="pill-group" style="margin-top:0;">
-          <div class="pill-item" :class="{ active: draft.isArchived === false }" @click="draft.isArchived = false">未归档</div>
-          <div class="pill-item" :class="{ active: draft.isArchived === true }" @click="draft.isArchived = true">已归档</div>
-        </div>
-
-        <div class="modal-hint">高级自定义 CSS</div>
-        <textarea class="modal-textarea code-editor" style="height:60px;" v-model="draft.cardStyleCss" placeholder="/* 覆写当前引擎 CSS */"></textarea>
-
-        <!-- 编辑界面的实时排版预览 -->
-        <div class="modal-hint" style="margin-top:10px;">排版引擎预览</div>
-        <div class="preview-stage">
-          <component :is="'style'">{{ previewViewerCss }}</component>
-          
-          <div style="transform: scale(0.6); transform-origin: top center; pointer-events:none;">
-            <div v-if="previewLayout === 'wechat'" class="wx-page">
-              <div class="wx-header">
-                <div class="wx-avatar" :style="userAvatarStyle"></div>
-                <div class="wx-user-name">{{ userName }}</div>
-                <div class="wx-date">摘录于 {{ activeDateStr }}</div>
-              </div>
-              <div class="wx-divider"></div>
-              <div class="wx-content">{{ draft.content || '正文预览...' }}</div>
-              <div class="wx-footer">
-                <div class="wx-source"><span class="wx-slash">/</span>{{ draft.title || '标题' }}</div>
-                <div class="wx-char-name">{{ charName }} <span class="wx-tag">#{{ draft.type || 'daily' }}</span></div>
-              </div>
-            </div>
-
-            <div v-else-if="previewLayout === 'calendar'" class="cal-square">
-              <div class="cal-time">
-                <div class="cal-date-num">{{ activeDay }}</div>
-                <div class="cal-month">{{ activeMonthEn }} {{ activeYear }}</div>
-                <div class="cal-tag">#{{ draft.type || 'daily' }}</div>
-              </div>
-              <div class="cal-divider"><div class="cal-dot"></div><div class="cal-line"></div></div>
-              <div class="cal-content">{{ draft.content || '正文预览...' }}</div>
-              <div class="cal-footer">
-                <div class="cal-title">{{ draft.title || 'Memory Archive' }}</div>
-                <div class="cal-char-name">{{ charName }}</div>
-              </div>
-            </div>
-
-            <div v-else-if="previewLayout === 'letter'" class="letter-paper">
-              <div class="letter-grid">
-                <div class="letter-text">
-                  <div class="letter-salutation">Dear {{ charName }}：</div>
-                  <div class="letter-body">{{ draft.content || '正文预览...' }}</div>
-                  <div class="letter-sign">
-                    <div class="letter-sig-name">{{ userName }}</div>
-                    <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-else-if="previewLayout === 'magazine'" class="mag-card">
-              <div class="mag-cover" :style="getDiaryImageStyle(draft, 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?q=80&w=800&auto=format&fit=crop')">
-                <div class="mag-top-bar">
-                  <span class="mag-tag">#{{ draft.type || 'daily' }}</span>
-                  <span class="mag-date">{{ formatCardDate(draft.timestamp || draft.date) }}</span>
-                </div>
-              </div>
-              <div class="mag-content">
-                <div class="mag-text">{{ draft.content || '正文预览...' }}</div>
-                <div class="mag-divider"></div>
-                <div class="mag-footer">
-                  <span class="mag-author">{{ charName }}</span>
-                  <span class="mag-title">{{ draft.title || 'Excerpt' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div v-else-if="previewLayout === 'pixel'" class="pix-panel">
-              <div class="pix-inner">
-                <div class="pix-header">
-                  <div class="pix-header-main">
-                    <div class="pix-avatar">
-                      <div v-if="draft.imageMediaId || draft.imageUrl" :style="getDiaryImageStyle(draft)" class="pix-avatar-img"></div>
-                      <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
-                    </div>
-                    <div class="pix-title">{{ draft.title || '新手の物件' }}</div>
-                  </div>
-                  <div class="pix-btn-close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></div>
-                </div>
-                <div class="pix-divider"></div>
-                <div class="pix-body">{{ draft.content || '正文预览...' }}</div>
-                <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
-              </div>
-            </div>
-
-            <div v-else class="dd-card">
-              <div class="dd-header">
-                <div class="dd-avatar" :style="charAvatarStyle"></div>
-                <div class="dd-name">{{ charName }}</div>
-                <div class="dd-date">{{ activeDateStr }}</div>
-              </div>
-              <div class="dd-image-area" v-if="draft.imageMediaId || draft.imageUrl" :style="getDiaryImageStyle(draft)"></div>
-              <div class="dd-title" v-if="draft.title">{{ draft.title }}</div>
-              <div class="dd-content">{{ draft.content || '正文预览...' }}</div>
-              <div class="dd-footer">
-                <span style="font-weight:bold; background:#f4f5f7; padding:2px 6px; border-radius:4px;">#{{ draft.type || 'daily' }}</span>
-                <span>{{ formatTime(draft.timestamp || draft.date) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-actions" style="margin-top:20px;">
-          <button class="btn-cancel" @click="showEdit = false">取消</button>
-          <button class="btn-confirm" @click="saveEdit">保存更新</button>
-        </div>
-      </InnerModal>
-
-      <!-- 沉浸式引擎渲染 Modal (展示与高清长图保存用) -->
-      <div class="viewer-overlay" :class="{ show: showViewerModal }" @click.self="closeViewer">
-        <div class="close-modal" @click="closeViewer"><i class="fas fa-times"></i></div>
-        
-        <div class="render-target-wrap" v-if="activeDiary" id="renderWrap">
-          
-          <component :is="'style'">{{ activeViewerCss }}</component>
-          
-          <div id="diaryRenderNode" class="render-engine-box">
-            
-            <!-- Wechat Layout -->
-            <div v-if="activeLayout === 'wechat'" class="wx-page">
-              <div class="wx-header">
-                <div class="wx-avatar" :style="userAvatarStyle"></div>
-                <div class="wx-user-name">{{ userName }}</div>
-                <div class="wx-date">摘录于 {{ activeDateStr }}</div>
-              </div>
-              <div class="wx-divider"></div>
-              <div class="wx-content">{{ activeDiary.content }}</div>
-              <div class="wx-footer">
-                <div class="wx-source"><span class="wx-slash">/</span>{{ activeDiary.title || '无名起居注' }}</div>
-                <div class="wx-char-name">{{ charName }} <span class="wx-tag">#{{ activeDiary.type || 'daily' }}</span></div>
-              </div>
-            </div>
-
-            <!-- Calendar Layout -->
-            <div v-else-if="activeLayout === 'calendar'" class="cal-square">
-              <div class="cal-time">
-                <div class="cal-date-num">{{ activeDay }}</div>
-                <div class="cal-month">{{ activeMonthEn }} {{ activeYear }}</div>
-                <div class="cal-tag">#{{ activeDiary.type || 'daily' }}</div>
-              </div>
-              <div class="cal-divider"><div class="cal-dot"></div><div class="cal-line"></div></div>
-              <div class="cal-content">{{ activeDiary.content }}</div>
-              <div class="cal-footer">
-                <div class="cal-title">{{ activeDiary.title || 'Memory Archive' }}</div>
-                <div class="cal-char-name">{{ charName }}</div>
-              </div>
-            </div>
-
-            <!-- Letter Layout -->
-            <div v-else-if="activeLayout === 'letter'" class="letter-paper">
-              <div class="letter-grid">
-                <div class="letter-text">
-                  <div class="letter-salutation">Dear {{ charName }}：</div>
-                  <div class="letter-body">{{ activeDiary.content }}</div>
-                  <div class="letter-sign">
-                    <div class="letter-sig-name">{{ userName }}</div>
-                    <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Magazine Layout -->
-            <div v-else-if="activeLayout === 'magazine'" class="mag-card">
-              <div class="mag-cover" :style="getDiaryImageStyle(activeDiary, 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?q=80&w=800&auto=format&fit=crop')">
-                <div class="mag-top-bar">
-                  <span class="mag-tag">#{{ activeDiary.type || 'daily' }}</span>
-                  <span class="mag-date">{{ formatCardDate(activeDiary.timestamp || activeDiary.date) }}</span>
-                </div>
-              </div>
-              <div class="mag-content">
-                <div class="mag-text">{{ activeDiary.content }}</div>
-                <div class="mag-divider"></div>
-                <div class="mag-footer">
-                  <span class="mag-author">{{ charName }}</span>
-                  <span class="mag-title">{{ activeDiary.title || 'Excerpt' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Pixel Layout -->
-            <div v-else-if="activeLayout === 'pixel'" class="pix-panel">
-              <div class="pix-inner">
-                <div class="pix-header">
-                  <div class="pix-header-main">
-                    <div class="pix-avatar">
-                      <div v-if="activeDiary.imageMediaId || activeDiary.imageUrl" :style="getDiaryImageStyle(activeDiary)" class="pix-avatar-img"></div>
-                      <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
-                    </div>
-                    <div class="pix-title">{{ activeDiary.title || '新手の物件' }}</div>
-                  </div>
-                  <div class="pix-btn-close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></div>
-                </div>
-                <div class="pix-divider"></div>
-                <div class="pix-body">{{ activeDiary.content }}</div>
-                <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
-              </div>
-            </div>
-
-            <!-- Default Layout -->
-            <div v-else class="dd-card">
-              <div class="dd-header">
-                <div class="dd-avatar" :style="charAvatarStyle"></div>
-                <div class="dd-name">{{ charName }}</div>
-                <div class="dd-date">{{ activeDateStr }}</div>
-              </div>
-              <div class="dd-image-area" v-if="activeDiary.imageMediaId || activeDiary.imageUrl" :style="getDiaryImageStyle(activeDiary)"></div>
-              <div class="dd-title" v-if="activeDiary.title">{{ activeDiary.title }}</div>
-              <div class="dd-content">{{ activeDiary.content }}</div>
-              <div class="dd-footer">
-                <span style="font-weight:bold; background:#f4f5f7; padding:2px 6px; border-radius:4px;">#{{ activeDiary.type || 'daily' }}</span>
-                <span>{{ formatTime(activeDiary.timestamp || activeDiary.date) }}</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div class="viewer-actions" v-if="activeDiary">
-          <button class="save-img-btn" @click="downloadCardImage">
-            <i class="fas fa-camera"></i> 咔嚓，保存相片
-          </button>
+        <div style="flex:1;">
+          <div class="modal-hint">级别 (1-3)</div>
+          <input class="modal-input" type="number" min="1" max="3" v-model.number="draft.level" />
         </div>
       </div>
 
-      <!-- 生成回忆 Modal -->
-      <InnerModal :show="showSummary" @close="showSummary = false">
-        <div class="modal-title">生成高级回忆</div>
-        <div class="modal-hint" style="text-align:center; margin-bottom:10px;">将提取所选记录的核心内容生成新日记</div>
-        <div class="pill-group" style="margin-top:10px;">
-          <div class="pill-item" :class="{ active: targetLevel === 2 }" @click="targetLevel = 2">生成 L2 阶段总结</div>
-          <div class="pill-item" :class="{ active: targetLevel === 3 }" @click="targetLevel = 3">生成 L3 长期回忆</div>
-        </div>
-        <div class="modal-actions" style="margin-top:24px;">
-          <button class="btn-cancel" @click="showSummary = false" :disabled="isSummarizing">取消</button>
-          <button class="btn-confirm" @click="handleSummary" :disabled="selectedIds.length === 0 || isSummarizing">
-            <i v-if="isSummarizing" class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>
-            {{ isSummarizing ? '正在提取生成...' : '确认生成' }}
-          </button>
-        </div>
-      </InnerModal>
+      <div class="modal-hint">归档状态</div>
+      <div class="pill-group" style="margin-top:0;">
+        <div class="pill-item" :class="{ active: draft.isArchived === false }" @click="draft.isArchived = false">未归档</div>
+        <div class="pill-item" :class="{ active: draft.isArchived === true }" @click="draft.isArchived = true">已归档</div>
+      </div>
 
-    </Teleport>
+      <div class="modal-hint">高级自定义 CSS</div>
+      <textarea class="modal-textarea code-editor" style="height:60px;" v-model="draft.cardStyleCss" placeholder="/* 覆写当前引擎 CSS */"></textarea>
+
+      <!-- 编辑界面的实时排版预览 -->
+      <div class="modal-hint" style="margin-top:10px;">排版引擎预览</div>
+      <div class="preview-stage">
+        <component :is="'style'">{{ previewViewerCss }}</component>
+        
+        <div style="transform: scale(0.6); transform-origin: top center; pointer-events:none;">
+          
+          <div v-if="previewLayout === 'wechat'" class="wx-page">
+            <div class="wx-header">
+              <div class="wx-avatar" :style="userAvatarStyle"></div>
+              <div class="wx-user-name">{{ userName }}</div>
+              <div class="wx-date">摘录于 {{ activeDateStr }}</div>
+            </div>
+            <div class="wx-divider"></div>
+            <div class="wx-content">{{ draft.content || '正文预览...' }}</div>
+            <div class="wx-footer">
+              <div class="wx-source"><span class="wx-slash">/</span>{{ draft.title || '标题' }}</div>
+              <div class="wx-char-name">{{ charName }} <span class="wx-tag">#{{ draft.type || 'daily' }}</span></div>
+            </div>
+          </div>
+
+          <div v-else-if="previewLayout === 'calendar'" class="cal-square">
+            <div class="cal-time">
+              <div class="cal-date-num">{{ activeDay }}</div>
+              <div class="cal-month">{{ activeMonthEn }} {{ activeYear }}</div>
+              <div class="cal-tag">#{{ draft.type || 'daily' }}</div>
+            </div>
+            <div class="cal-divider"><div class="cal-dot"></div><div class="cal-line"></div></div>
+            <div class="cal-content">{{ draft.content || '正文预览...' }}</div>
+            <div class="cal-footer">
+              <div class="cal-title">{{ draft.title || 'Memory Archive' }}</div>
+              <div class="cal-char-name">{{ charName }}</div>
+            </div>
+          </div>
+
+          <div v-else-if="previewLayout === 'letter'" class="letter-paper">
+            <div class="letter-grid">
+              <div class="letter-text">
+                <div class="letter-salutation">Dear {{ charName }}：</div>
+                <div class="letter-body">{{ draft.content || '正文预览...' }}</div>
+                <div class="letter-sign">
+                  <div class="letter-sig-name">{{ userName }}</div>
+                  <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="previewLayout === 'magazine'" class="mag-card">
+            <div class="mag-cover" :style="getDiaryImageStyle(draft, 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?q=80&w=800&auto=format&fit=crop')">
+              <div class="mag-top-bar">
+                <span class="mag-tag">#{{ draft.type || 'daily' }}</span>
+                <span class="mag-date">{{ formatCardDate(draft.timestamp || draft.date) }}</span>
+              </div>
+            </div>
+            <div class="mag-content">
+              <div class="mag-text">{{ draft.content || '正文预览...' }}</div>
+              <div class="mag-divider"></div>
+              <div class="mag-footer">
+                <span class="mag-author">{{ charName }}</span>
+                <span class="mag-title">{{ draft.title || 'Excerpt' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="previewLayout === 'pixel'" class="pix-panel">
+            <div class="pix-inner">
+              <div class="pix-header">
+                <div class="pix-header-main">
+                  <div class="pix-avatar">
+                    <div v-if="draft.imageMediaId || draft.imageUrl" :style="getDiaryImageStyle(draft)" class="pix-avatar-img"></div>
+                    <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
+                  </div>
+                  <div class="pix-title">{{ draft.title || '新手の物件' }}</div>
+                </div>
+                <div class="pix-btn-close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></div>
+              </div>
+              <div class="pix-divider"></div>
+              <div class="pix-body">{{ draft.content || '正文预览...' }}</div>
+              <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
+            </div>
+          </div>
+
+          <div v-else class="dd-card">
+            <div class="dd-header">
+              <div class="dd-avatar" :style="charAvatarStyle"></div>
+              <div class="dd-name">{{ charName }}</div>
+              <div class="dd-date">{{ activeDateStr }}</div>
+            </div>
+            <div class="dd-image-area" v-if="draft.imageMediaId || draft.imageUrl" :style="getDiaryImageStyle(draft)"></div>
+            <div class="dd-title" v-if="draft.title">{{ draft.title }}</div>
+            <div class="dd-content">{{ draft.content || '正文预览...' }}</div>
+            <div class="dd-footer">
+              <span style="font-weight:bold; background:#f4f5f7; padding:2px 6px; border-radius:4px;">#{{ draft.type || 'daily' }}</span>
+              <span>{{ formatTime(draft.timestamp || draft.date) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:20px;">
+        <button class="btn-cancel" @click="showEdit = false">取消</button>
+        <button class="btn-confirm" @click="saveEdit">保存更新</button>
+      </div>
+    </InnerModal>
+
+    <!-- 沉浸式引擎渲染 Modal -->
+    <div class="viewer-overlay" :class="{ show: showViewerModal }" @click.self="closeViewer">
+      <div class="close-modal" @click="closeViewer"><i class="fas fa-times"></i></div>
+      
+      <div class="render-target-wrap" v-if="activeDiary">
+        <component :is="'style'">{{ activeViewerCss }}</component>
+        
+        <div id="diaryRenderNode" class="render-engine-box">
+          
+          <div v-if="activeLayout === 'wechat'" class="wx-page">
+            <div class="wx-header">
+              <div class="wx-avatar" :style="userAvatarStyle"></div>
+              <div class="wx-user-name">{{ userName }}</div>
+              <div class="wx-date">摘录于 {{ activeDateStr }}</div>
+            </div>
+            <div class="wx-divider"></div>
+            <div class="wx-content">{{ activeDiary.content }}</div>
+            <div class="wx-footer">
+              <div class="wx-source"><span class="wx-slash">/</span>{{ activeDiary.title || '无名起居注' }}</div>
+              <div class="wx-char-name">{{ charName }} <span class="wx-tag">#{{ activeDiary.type || 'daily' }}</span></div>
+            </div>
+          </div>
+
+          <div v-else-if="activeLayout === 'calendar'" class="cal-square">
+            <div class="cal-time">
+              <div class="cal-date-num">{{ activeDay }}</div>
+              <div class="cal-month">{{ activeMonthEn }} {{ activeYear }}</div>
+              <div class="cal-tag">#{{ activeDiary.type || 'daily' }}</div>
+            </div>
+            <div class="cal-divider"><div class="cal-dot"></div><div class="cal-line"></div></div>
+            <div class="cal-content">{{ activeDiary.content }}</div>
+            <div class="cal-footer">
+              <div class="cal-title">{{ activeDiary.title || 'Memory Archive' }}</div>
+              <div class="cal-char-name">{{ charName }}</div>
+            </div>
+          </div>
+
+          <div v-else-if="activeLayout === 'letter'" class="letter-paper">
+            <div class="letter-grid">
+              <div class="letter-text">
+                <div class="letter-salutation">Dear {{ charName }}：</div>
+                <div class="letter-body">{{ activeDiary.content }}</div>
+                <div class="letter-sign">
+                  <div class="letter-sig-name">{{ userName }}</div>
+                  <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="activeLayout === 'magazine'" class="mag-card">
+            <div class="mag-cover" :style="getDiaryImageStyle(activeDiary, 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?q=80&w=800&auto=format&fit=crop')">
+              <div class="mag-top-bar">
+                <span class="mag-tag">#{{ activeDiary.type || 'daily' }}</span>
+                <span class="mag-date">{{ formatCardDate(activeDiary.timestamp || activeDiary.date) }}</span>
+              </div>
+            </div>
+            <div class="mag-content">
+              <div class="mag-text">{{ activeDiary.content }}</div>
+              <div class="mag-divider"></div>
+              <div class="mag-footer">
+                <span class="mag-author">{{ charName }}</span>
+                <span class="mag-title">{{ activeDiary.title || 'Excerpt' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="activeLayout === 'pixel'" class="pix-panel">
+            <div class="pix-inner">
+              <div class="pix-header">
+                <div class="pix-header-main">
+                  <div class="pix-avatar">
+                    <div v-if="activeDiary.imageMediaId || activeDiary.imageUrl" :style="getDiaryImageStyle(activeDiary)" class="pix-avatar-img"></div>
+                    <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
+                  </div>
+                  <div class="pix-title">{{ activeDiary.title || '新手の物件' }}</div>
+                </div>
+                <div class="pix-btn-close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></div>
+              </div>
+              <div class="pix-divider"></div>
+              <div class="pix-body">{{ activeDiary.content }}</div>
+              <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
+            </div>
+          </div>
+
+          <div v-else class="dd-card">
+            <div class="dd-header">
+              <div class="dd-avatar" :style="charAvatarStyle"></div>
+              <div class="dd-name">{{ charName }}</div>
+              <div class="dd-date">{{ activeDateStr }}</div>
+            </div>
+            <div class="dd-image-area" v-if="activeDiary.imageMediaId || activeDiary.imageUrl" :style="getDiaryImageStyle(activeDiary)"></div>
+            <div class="dd-title" v-if="activeDiary.title">{{ activeDiary.title }}</div>
+            <div class="dd-content">{{ activeDiary.content }}</div>
+            <div class="dd-footer">
+              <span style="font-weight:bold; background:#f4f5f7; padding:2px 6px; border-radius:4px;">#{{ activeDiary.type || 'daily' }}</span>
+              <span>{{ formatTime(activeDiary.timestamp || activeDiary.date) }}</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="viewer-actions" v-if="activeDiary">
+        <button class="save-img-btn" @click="downloadCardImage">
+          <i class="fas fa-camera"></i> 咔嚓，保存相片
+        </button>
+      </div>
+    </div>
+
+    <!-- 生成回忆 Modal -->
+    <InnerModal :show="showSummary" @close="showSummary = false" class="forced-top-modal">
+      <div class="modal-title">生成高级回忆</div>
+      <div class="modal-hint" style="text-align:center; margin-bottom:10px;">将提取所选记录的核心内容生成新日记</div>
+      <div class="pill-group" style="margin-top:10px;">
+        <div class="pill-item" :class="{ active: targetLevel === 2 }" @click="targetLevel = 2">生成 L2 阶段总结</div>
+        <div class="pill-item" :class="{ active: targetLevel === 3 }" @click="targetLevel = 3">生成 L3 长期回忆</div>
+      </div>
+      <div class="modal-actions" style="margin-top:24px;">
+        <button class="btn-cancel" @click="showSummary = false" :disabled="isSummarizing">取消</button>
+        <button class="btn-confirm" @click="handleSummary" :disabled="selectedIds.length === 0 || isSummarizing">
+          <i v-if="isSummarizing" class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>
+          {{ isSummarizing ? '正在提取生成...' : '确认生成' }}
+        </button>
+      </div>
+    </InnerModal>
 
   </div>
 </template>
@@ -470,6 +453,7 @@ const needsImage = computed(() => ['magazine', 'pixel', 'default'].includes(prev
 const normalizeDate = (d) => { if(!d) return new Date(); const dt = new Date(d); return isNaN(dt.getTime()) ? new Date() : dt }
 const getActiveDateObj = (d) => d ? normalizeDate(d.timestamp || d.date) : new Date()
 
+// 用于主渲染
 const activeDateObj = computed(() => getActiveDateObj(activeDiary.value || draft.value))
 const activeDateStr = computed(() => `${activeDateObj.value.getFullYear()}.${String(activeDateObj.value.getMonth()+1).padStart(2,'0')}.${String(activeDateObj.value.getDate()).padStart(2,'0')}`)
 const activeYear = computed(() => activeDateObj.value.getFullYear())
@@ -566,7 +550,7 @@ const previewViewerCss = computed(() => {
   return css || `.dd-card { background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); padding: 24px; width: 320px; color: #333; } .dd-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; } .dd-avatar { width: 36px; height: 36px; border-radius: 50%; background-size: cover; } .dd-name { font-size: 15px; font-weight: 600; flex: 1; } .dd-date { font-size: 12px; color: #888; } .dd-image-area { width: 100%; height: 200px; background-size: cover; background-position: center; border-radius: 8px; margin-bottom: 20px; } .dd-title { font-size: 16px; font-weight: bold; margin-bottom: 8px; } .dd-content { font-size: 14px; line-height: 1.6; color: #555; white-space: pre-wrap; } .dd-footer { margin-top: 20px; border-top: 1px solid #eee; padding-top: 12px; display: flex; font-size: 11px; color: #aaa; gap: 8px; }`
 })
 
-// 【核心大修复：克隆节点全屏渲染法，完美解决长图只截一半的问题】
+// 【核心长图渲染逻辑：克隆节点跳出限制】
 const downloadCardImage = async () => {
   const el = document.getElementById('diaryRenderNode')
   if (!el) return
@@ -578,28 +562,26 @@ const downloadCardImage = async () => {
   }
   
   try {
-    // 1. 深度克隆原始卡片节点
+    // 深度克隆原始卡片
     const clone = el.cloneNode(true)
     
-    // 2. 将其放置于屏幕之外，剥离所有的 overflow 与高度限制，让其在自然高度下完全展开
+    // 强制脱离一切滚动限制，放在屏幕外自由生长
     clone.style.position = 'absolute'
     clone.style.top = '-9999px'
     clone.style.left = '-9999px'
     clone.style.margin = '0'
-    clone.style.transform = 'none'
     clone.style.maxHeight = 'none'
     clone.style.overflow = 'visible'
     
-    // 3. 为克隆节点动态注入其专属 CSS
+    // 把专属 CSS 注入克隆体内
     const styleNode = document.createElement('style')
     styleNode.innerHTML = activeViewerCss.value
     clone.insertBefore(styleNode, clone.firstChild)
     
-    // 4. 将完全体插入 HTML
     document.body.appendChild(clone)
     
-    // 等待浏览器重新计算排版
-    await new Promise(r => setTimeout(r, 250))
+    // 给予浏览器充足的重排和字体加载时间
+    await new Promise(r => setTimeout(r, 400))
     
     const canvas = await window.html2canvas(clone, { 
       scale: 3, 
@@ -610,14 +592,13 @@ const downloadCardImage = async () => {
       windowHeight: clone.scrollHeight
     })
     
-    // 5. 截图完成，销毁痕迹
     document.body.removeChild(clone)
 
     const link = document.createElement('a')
     link.download = `Memory_Diary_${activeDiary.value.id}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
-    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已完整保存至设备' }))
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已完整保存至相册' }))
   } catch (err) { 
     alert('保存图片失败，请检查浏览器权限。') 
   }
@@ -654,7 +635,15 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 </script>
 
 <style scoped>
-.diary-tab { padding: 10px 0 10px 0; position: relative; }
+/* 移除 position:relative; z-index:1; 以打破层级限制 */
+.diary-tab { padding: 10px 0 20px 0; }
+
+/* 强制 InnerModal 置顶，防止被底栏/顶栏穿插 */
+:deep(.modal-mask),
+:deep(.inner-modal-mask) {
+  z-index: 99999 !important;
+}
+
 .dropdown-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 90; }
 .diary-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding-right: 40px; position: relative; z-index: 100; }
 
@@ -724,14 +713,14 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 
 .preview-stage { background: #f4f5f7; border-radius: 12px; padding: 16px; display: flex; justify-content: center; margin-top: 8px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02); min-height: 120px; overflow: hidden; align-items: center;}
 
-/* ======== Teleport 容器中的 Modal 样式 ======== */
-.viewer-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; padding: 20px; box-sizing: border-box; }
+/* ======== 沉浸式引擎渲染区域 ======== */
+.viewer-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; padding: 20px; box-sizing: border-box; }
 .viewer-overlay.show { opacity: 1; pointer-events: auto; }
 
-.close-modal { position: absolute; top: env(safe-area-inset-top, 30px); right: 20px; width: 36px; height: 36px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10000; cursor: pointer; color: #fff; transition: 0.2s; }
+.close-modal { position: absolute; top: env(safe-area-inset-top, 30px); right: 20px; width: 36px; height: 36px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 100000; cursor: pointer; color: #fff; transition: 0.2s; }
 .close-modal:active { background: rgba(255,255,255,0.3); }
 
-/* 高清渲染必须的容器约束 */
+/* 原本的显示容器，在克隆长图时会被无视 */
 .render-target-wrap { display: flex; justify-content: center; width: 100%; max-height: 80vh; overflow-y: auto; overflow-x: hidden; margin-bottom: 24px; animation: slideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); border-radius: 16px; }
 .render-target-wrap::-webkit-scrollbar { display: none; }
 @keyframes slideUp { from { transform: translateY(40px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
