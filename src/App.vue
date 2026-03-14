@@ -208,6 +208,7 @@
       <StorageApp      :show="activeApp === 'storage'"      @close="activeApp = null" />
       <MusicApp        :show="activeApp === 'music'"        @close="activeApp = null" />
       <OfflineApp      :show="activeApp === 'offline'"      @close="activeApp = null" />
+      <MemoryApp       :show="activeApp === 'memory'"       @close="activeApp = null" />
       
     </div>
   </div>
@@ -230,6 +231,7 @@ import StorageApp      from '@/apps/storage/StorageApp.vue'
 import MusicApp        from '@/apps/music/MusicApp.vue'
 import MiniCapsule     from '@/apps/music/components/MiniCapsule.vue' 
 import OfflineApp      from '@/apps/offline/OfflineApp.vue'
+import MemoryApp       from '@/apps/memory/MemoryApp.vue'
 
 const { time } = useTime()
 const { appearance } = useAppearance()
@@ -371,7 +373,7 @@ const getAppBg = (item) => {
 }
 
 const getDefaultIcon = (appId) => {
-  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt' }
+  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt', memory: 'fas fa-book' }
   return icons[appId] || 'fas fa-cube'
 }
 

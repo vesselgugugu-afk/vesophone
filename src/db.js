@@ -2,15 +2,19 @@ import Dexie from 'dexie'
 
 export const db = new Dexie('AIPhoneDB')
 
-// 升级数据库版本至 5，追加 media 统一多媒体表
-db.version(5).stores({
+// 升级数据库版本至 6，追加结构化记忆与日记表
+db.version(6).stores({
   worldbooks: '++id, group, title, enabled',
   characters: '++id, name',
   personas: '++id, title, isActive',
   
   // 混合存储：巨量数据存放在 DB 中
   messages: 'id, sessionId, role, type',
-  memories: 'id, sessionId, date',
+  memories: 'id, sessionId, characterId, date, type, source, importance, weight',
+
+  // 日记/起居注系统
+  diaries: '++id, sessionId, characterId, date, level, isArchived',
+  memoryBundles: '++id, characterId, level, source, date',
 
   // 音乐模块专属表
   musicLibrary: 'name', 

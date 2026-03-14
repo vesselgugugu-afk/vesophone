@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, toRaw } from 'vue'
 import db from '@/db'
 
 const KEY = 'chatSessions'
@@ -54,6 +54,7 @@ const friendRequests = ref(rawFriends)
 
 const activeMessages = ref([])
 const activeMemories = ref([])
+const activeDiaries = ref([])
 let activeSessionId = null
 
 if (!localStorage.getItem('dbMigrated_v2')) {
@@ -64,10 +65,42 @@ if (!localStorage.getItem('dbMigrated_v2')) {
       chat.lastMessage = msgs[msgs.length - 1].content 
     }
     if (chat.memoryList && chat.memoryList.length > 0) {
-      const mems = chat.memoryList.map(m => ({ ...m, sessionId: chat.id }))
+      const mems = chat.memoryList.map(m => {
+        const isGroup = chat.isGroup
+        const charId = (!isGroup && chat.participants && chat.participants[0] && chat.participants[0].id) ? chat.participants[0].id : null
+        return { 
+          ...m, 
+          sessionId: chat.id, 
+          characterId: charId,
+          content: m.content || m.text || '',
+          type: m.type || 'event',
+          source: m.source || 'chat',
+          importance: m.importance !== undefined ? m.importance : 1,
+          weight: m.weight !== undefined ? m.weight : (m.importance !== undefined ? m.importance : 1),
+          keywords: m.keywords || [],
+          isArchived: m.isArchived || false,
+          timestamp: m.timestamp || Date.now()
+        }
+      })
       await db.memories.bulkAdd(mems)
     } else if (chat.memory && typeof chat.memory === 'string') {
-      await db.memories.add({ id: Date.now(), sessionId: chat.id, text: chat.memory, date: new Date().toLocaleString() })
+      const isGroup = chat.isGroup
+      const charId = (!isGroup && chat.participants && chat.participants[0] && chat.participants[0].id) ? chat.participants[0].id : null
+      await db.memories.add({ 
+        id: Date.now(), 
+        sessionId: chat.id, 
+        characterId: charId,
+        text: chat.memory, 
+        content: chat.memory,
+        date: new Date().toLocaleString(),
+        type: 'event',
+        source: 'chat',
+        importance: 1,
+        weight: 1,
+        keywords: [],
+        isArchived: false,
+        timestamp: Date.now()
+      })
     }
     delete chat.messages
     delete chat.memoryList
@@ -114,6 +147,18 @@ watch(friendRequests, (v) => localStorage.setItem(KEY_FRIENDS, JSON.stringify(v)
   } catch (e) { console.error(e) }
 })()
 
+const toPlain = (obj) => {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(toRaw(obj))
+    }
+  } catch (e) {}
+  try {
+    return JSON.parse(JSON.stringify(toRaw(obj)))
+  } catch (e) {
+    return obj
+  }
+}
 
 export function useChatSessions() {
   const createSession = (selectedChars) => {
@@ -159,6 +204,7 @@ export function useChatSessions() {
     chatSessions.value = chatSessions.value.filter((c) => c.id !== id)
     await db.messages.where({ sessionId: id }).delete()
     await db.memories.where({ sessionId: id }).delete()
+    await db.diaries.where({ sessionId: id }).delete()
     await db.media.delete(`chat_avt_${id}`)
     await db.media.delete(`chat_bg_${id}`)
   }
@@ -179,6 +225,7 @@ export function useChatSessions() {
     activeSessionId = sessionId
     activeMessages.value = await db.messages.where({ sessionId }).toArray()
     activeMemories.value = await db.memories.where({ sessionId }).toArray()
+    activeDiaries.value = await db.diaries.where({ sessionId }).toArray()
   }
 
   const pushMessage = async (sessionId, message) => {
@@ -229,11 +276,80 @@ export function useChatSessions() {
     activeMessages.value = activeMessages.value.filter(m => !messageIds.includes(m.id))
   }
 
+  const getDefaultCharacterId = (sessionId) => {
+    const chat = chatSessions.value.find(c => c.id === sessionId)
+    if (chat && !chat.isGroup && chat.participants && chat.participants[0] && chat.participants[0].id) {
+      return chat.participants[0].id
+    }
+    return null
+  }
+
   const addMemory = async (sessionId, memObj) => {
+    if (Array.isArray(memObj)) throw new Error('Memory payload invalid: array')
     if (!memObj.id) memObj.id = Date.now() + Math.random()
     const fullMem = { ...memObj, sessionId }
-    await db.memories.add(fullMem)
+    if (!fullMem.timestamp) fullMem.timestamp = Date.now()
+    if (!fullMem.date) fullMem.date = new Date(fullMem.timestamp).toLocaleString()
+    if (fullMem.text === undefined && fullMem.content !== undefined) fullMem.text = fullMem.content
+    if (fullMem.content === undefined && fullMem.text !== undefined) fullMem.content = fullMem.text
+    if (fullMem.type === undefined) fullMem.type = 'event'
+    if (fullMem.source === undefined) fullMem.source = 'chat'
+    if (fullMem.importance === undefined) fullMem.importance = 1
+    if (fullMem.weight === undefined) fullMem.weight = fullMem.importance
+    if (fullMem.characterId === undefined) fullMem.characterId = getDefaultCharacterId(sessionId)
+    if (fullMem.keywords === undefined) fullMem.keywords = []
+    if (fullMem.isArchived === undefined) fullMem.isArchived = false
+
+    const safeMem = toPlain(fullMem)
+    await db.memories.add(safeMem)
     activeMemories.value.push(fullMem)
+  }
+
+  const addStructuredMemory = async (sessionId, memObj) => {
+    if (!memObj) return
+    if (Array.isArray(memObj)) throw new Error('Memory payload invalid: array')
+    const normalized = { ...memObj }
+    if (!normalized.id) normalized.id = Date.now() + Math.random()
+    if (!normalized.timestamp) normalized.timestamp = Date.now()
+    if (!normalized.date) normalized.date = new Date(normalized.timestamp).toLocaleString()
+    if (normalized.text === undefined && normalized.content !== undefined) normalized.text = normalized.content
+    if (normalized.content === undefined && normalized.text !== undefined) normalized.content = normalized.text
+    if (normalized.type === undefined) normalized.type = 'event'
+    if (normalized.source === undefined) normalized.source = 'chat'
+    if (normalized.importance === undefined) normalized.importance = 1
+    if (normalized.weight === undefined) normalized.weight = normalized.importance
+    if (normalized.characterId === undefined) normalized.characterId = getDefaultCharacterId(sessionId)
+    if (normalized.keywords === undefined) normalized.keywords = []
+    if (normalized.isArchived === undefined) normalized.isArchived = false
+    
+    const fullMem = { ...normalized, sessionId }
+    const safeMem = toPlain(fullMem)
+    await db.memories.add(safeMem)
+    if (activeSessionId === sessionId) {
+      activeMemories.value.push(fullMem)
+    }
+    return fullMem
+  }
+
+  const addStructuredMemoriesForCharacters = async (sessionId, characterIds, memObj) => {
+    if (!characterIds || characterIds.length === 0) return []
+    const results = []
+    for (const cid of characterIds) {
+      const cloned = { ...memObj, characterId: cid }
+      const saved = await addStructuredMemory(sessionId, cloned)
+      if (saved) results.push(saved)
+    }
+    return results
+  }
+
+  const getMemoriesByCharacter = async (characterId) => {
+    if (!characterId) return []
+    return await db.memories.where({ characterId }).toArray()
+  }
+
+  const getMemoriesBySession = async (sessionId) => {
+    if (!sessionId) return []
+    return await db.memories.where({ sessionId }).toArray()
   }
 
   const deleteMemory = async (memoryId) => {
@@ -242,9 +358,69 @@ export function useChatSessions() {
   }
 
   const updateMemory = async (memoryId, text) => {
-    await db.memories.where({ id: memoryId }).modify({ text })
+    await db.memories.where({ id: memoryId }).modify({ text, content: text })
     const mem = activeMemories.value.find(m => m.id === memoryId)
-    if (mem) mem.text = text
+    if (mem) {
+      mem.text = text
+      mem.content = text
+    }
+  }
+
+  const updateMemoryFields = async (memoryId, updates) => {
+    await db.memories.where({ id: memoryId }).modify(updates)
+    const mem = activeMemories.value.find(m => m.id === memoryId)
+    if (mem) Object.assign(mem, updates)
+  }
+
+  const addDiary = async (sessionId, diaryObj) => {
+    if (!diaryObj) return null
+    if (Array.isArray(diaryObj)) throw new Error('Diary payload invalid: array')
+    const fullDiary = {
+      id: diaryObj.id,
+      sessionId,
+      characterId: diaryObj.characterId || getDefaultCharacterId(sessionId),
+      date: diaryObj.date || new Date().toLocaleString(),
+      timestamp: diaryObj.timestamp || Date.now(),
+      content: diaryObj.content || diaryObj.text || '',
+      level: diaryObj.level !== undefined ? diaryObj.level : 1,
+      isArchived: diaryObj.isArchived !== undefined ? diaryObj.isArchived : false,
+      source: diaryObj.source || 'chat',
+      title: diaryObj.title || '',
+      type: diaryObj.type || 'daily'
+    }
+    if (!fullDiary.id) delete fullDiary.id
+    const safeDiary = toPlain(fullDiary)
+    const id = await db.diaries.add(safeDiary)
+    fullDiary.id = id
+    if (activeSessionId === sessionId) {
+      activeDiaries.value.push(fullDiary)
+    }
+    return fullDiary
+  }
+
+  const updateDiary = async (diaryId, updates) => {
+    await db.diaries.where({ id: diaryId }).modify(updates)
+    const d = activeDiaries.value.find(i => i.id === diaryId)
+    if (d) Object.assign(d, updates)
+  }
+
+  const deleteDiary = async (diaryId) => {
+    await db.diaries.where({ id: diaryId }).delete()
+    activeDiaries.value = activeDiaries.value.filter(d => d.id !== diaryId)
+  }
+
+  const getDiariesByCharacter = async (characterId, includeArchived = true) => {
+    if (!characterId) return []
+    if (includeArchived) {
+      return await db.diaries.where({ characterId }).toArray()
+    }
+    return await db.diaries.where({ characterId, isArchived: false }).toArray()
+  }
+
+  const archiveDiaries = async (diaryIds) => {
+    if (!diaryIds || diaryIds.length === 0) return
+    await db.diaries.where('id').anyOf(diaryIds).modify({ isArchived: true })
+    activeDiaries.value = activeDiaries.value.map(d => diaryIds.includes(d.id) ? { ...d, isArchived: true } : d)
   }
 
   const saveCssPreset = (name, css) => cssPresets.value.push({ id: Date.now(), name, css })
@@ -281,11 +457,15 @@ export function useChatSessions() {
 
   return { 
     chatSessions, sessions: chatSessions, cssPresets,
-    activeMessages, activeMemories, friendRequests,
+    activeMessages, activeMemories, activeDiaries, friendRequests,
     createSession, deleteSession, clearMessages, loadSessionData,
     pushMessage, updateMessage, removeMessages,
-    addMemory, deleteMemory, updateMemory,
+    addMemory, addStructuredMemory, addStructuredMemoriesForCharacters,
+    getMemoriesByCharacter, getMemoriesBySession,
+    deleteMemory, updateMemory, updateMemoryFields,
+    addDiary, updateDiary, deleteDiary, getDiariesByCharacter, archiveDiaries,
     saveCssPreset, deleteCssPreset,
     addFriendRequest, removeFriendRequest, acceptFriendRequest
   }
 }
+

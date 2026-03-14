@@ -191,6 +191,88 @@ export function usePromptOrder() {
 
   const stripThinking = (text) => text ? text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim() : ''
 
+  const extractKeywords = (text) => {
+    if (!text) return []
+    const raw = text.toLowerCase()
+    const stop = ['我', '你', '他', '她', '它', '我们', '你们', '他们', '自己', '这个', '那个', '然后', '但是', '因为', '所以', '今天', '昨天', '刚刚', '现在', '不是', '没有', '有点', '可以', '可能', '觉得', '就是', '不过', '还是', '只是', '而且', '以及', '的', '了', '呢', '啊', '吗', '吧', '呀', '哦', '嗯', '哈', 'yes', 'no', 'ok', 'okay']
+    const cleaned = raw.replace(/[^\u4e00-\u9fa5a-z0-9\s]/g, ' ')
+    const parts = cleaned.split(/\s+/).filter(Boolean)
+    const filtered = parts.filter(p => p.length >= 2 && !stop.includes(p))
+    return Array.from(new Set(filtered)).slice(0, 8)
+  }
+
+  const normalizeMemText = (m) => {
+    return (m.content || m.text || '').toString().trim()
+  }
+
+  const buildMemoryPromptBlock = (activeMessages, activeMemories, activeDiaries) => {
+    const memories = Array.isArray(activeMemories) ? activeMemories : []
+    const diaries = Array.isArray(activeDiaries) ? activeDiaries : []
+
+    const coreList = memories.filter(m => !m.isArchived && (m.type === 'core' || Number(m.importance) >= 4 || Number(m.weight) >= 4))
+    const milestoneList = memories.filter(m => !m.isArchived && m.type === 'milestone')
+    
+    const lastUserMsg = [...(activeMessages || [])].reverse().find(m => m.role === 'user' && m.content)
+    const userKeywords = extractKeywords(lastUserMsg ? lastUserMsg.content : '')
+    
+    const related = memories.filter(m => {
+      if (m.isArchived) return false
+      const text = normalizeMemText(m)
+      if (!text) return false
+      const kws = Array.isArray(m.keywords) && m.keywords.length > 0 ? m.keywords : extractKeywords(text)
+      return kws.some(k => userKeywords.includes(k) || (lastUserMsg && lastUserMsg.content && lastUserMsg.content.toLowerCase().includes(k.toLowerCase())))
+    })
+
+    const diaryList = diaries.filter(d => !d.isArchived).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 6)
+
+    let sections = []
+
+    if (coreList.length > 0) {
+      const coreText = coreList.slice(0, 8).map((m, i) => {
+        const t = normalizeMemText(m)
+        const dt = m.date || ''
+        return `${i + 1}. ${dt ? `[${dt}] ` : ''}${t}`
+      }).join('\n')
+      sections.push(`[核心记忆]\n${coreText}`)
+    }
+
+    if (milestoneList.length > 0) {
+      const mileText = milestoneList.slice(0, 6).map((m, i) => {
+        const t = normalizeMemText(m)
+        const dt = m.date || ''
+        const src = m.source ? `(${m.source})` : ''
+        return `${i + 1}. ${dt ? `[${dt}] ` : ''}${t} ${src}`.trim()
+      }).join('\n')
+      sections.push(`[阶段性大事]\n${mileText}`)
+    }
+
+    if (diaryList.length > 0) {
+      const diaryText = diaryList.map((d, i) => {
+        const dt = d.date || ''
+        const t = (d.content || '').toString().trim()
+        return `${i + 1}. ${dt ? `[${dt}] ` : ''}${t}`
+      }).join('\n')
+      sections.push(`[最近起居注]\n${diaryText}`)
+    }
+
+    if (related.length > 0) {
+      const relText = related.slice(0, 6).map((m, i) => {
+        const t = normalizeMemText(m)
+        const dt = m.date || ''
+        return `${i + 1}. ${dt ? `[${dt}] ` : ''}${t}`
+      }).join('\n')
+      sections.push(`[触景生情的回忆]\n${relText}`)
+    }
+
+    if (sections.length === 0 && memories.length > 0) {
+      const memStr = memories.map((m, i) => `${i+1}. [${m.date || ''}] ${normalizeMemText(m)}`).join('\n')
+      sections.push(`[长期记忆]\n${memStr}`)
+    }
+
+    if (sections.length === 0) return ''
+    return sections.join('\n\n')
+  }
+
   const previewData = computed(() => {
     let text = ''
     let staticTokenStr = ''
@@ -233,7 +315,7 @@ export function usePromptOrder() {
     return { text: text.trim(), tokens: Math.ceil(staticTokenStr.length / 4) }
   })
 
-  const buildApiMessages = (currentChat, activeMessages, activeMemories) => {
+  const buildApiMessages = (currentChat, activeMessages, activeMemories, activeDiaries) => {
     const apiMessages = []
     let availableStickers = []
     if (currentChat.boundStickerGroups) {
@@ -298,9 +380,9 @@ ${queueStr}
         if (charPrompt.trim()) apiMessages.push({ role: 'system', content: charPrompt.trim() })
       }
       else if (item.key === 'memory') {
-        if (activeMemories && activeMemories.length > 0) {
-          const memStr = activeMemories.map((m, i) => `${i+1}. [${m.date}] ${m.text}`).join('\n')
-          apiMessages.push({ role: 'system', content: `[长期记忆]\n${memStr}` })
+        const memBlock = buildMemoryPromptBlock(activeMessages || [], activeMemories || [], activeDiaries || [])
+        if (memBlock && memBlock.trim()) {
+          apiMessages.push({ role: 'system', content: memBlock })
         }
       }
       else if (item.key === 'chat_history') {

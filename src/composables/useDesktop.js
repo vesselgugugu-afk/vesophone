@@ -18,7 +18,8 @@ const DEFAULT_PAGE1 = [
 
 const DEFAULT_PAGE2 = [
   { id: 'app_storage', type: 'app', appId: 'storage', name: '存储', icon: '', size: '1x1' },
-  { id: 'app_offline', type: 'app', appId: 'offline', name: '线下见面', icon: '', size: '1x1' }
+  { id: 'app_offline', type: 'app', appId: 'offline', name: '线下见面', icon: '', size: '1x1' },
+  { id: 'app_memory', type: 'app', appId: 'memory', name: '那年今日', icon: '', size: '1x1' }
 ]
 
 const DEFAULT_WIDGET_LIBRARY = [
@@ -44,6 +45,12 @@ export function useDesktop() {
   const page2 = ref(load('desktop_page2', DEFAULT_PAGE2))
   
   const customWidgetLibrary = ref(load('customWidgetLibrary', []))
+
+  const ensureMemoryApp = () => {
+    const has = [...page1.value, ...page2.value].some(i => i.type === 'app' && i.appId === 'memory')
+    if (!has) page2.value.push({ id: 'app_memory', type: 'app', appId: 'memory', name: '那年今日', icon: '', size: '1x1' })
+  }
+  ensureMemoryApp()
 
   watch(page1, (v) => localStorage.setItem('desktop_page1', JSON.stringify(v)), { deep: true })
   watch(page2, (v) => localStorage.setItem('desktop_page2', JSON.stringify(v)), { deep: true })
