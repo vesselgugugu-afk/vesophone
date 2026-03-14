@@ -98,7 +98,7 @@
       生成回忆 (已选 {{ selectedIds.length }} 篇)
     </button>
 
-    <!-- 增强版编辑弹窗 -->
+    <!-- 增强版编辑弹窗 (移除父级 z-index 限制后不会再穿插) -->
     <InnerModal :show="showEdit" @close="showEdit = false">
       <div class="modal-title">编辑起居注排版</div>
       
@@ -245,11 +245,11 @@
       </div>
     </InnerModal>
 
-    <!-- 沉浸式引擎渲染 Modal -->
+    <!-- 沉浸式引擎渲染 Modal (展示与高清保存用) -->
     <div class="viewer-overlay" :class="{ show: showViewerModal }" @click.self="closeViewer">
       <div class="close-modal" @click="closeViewer"><i class="fas fa-times"></i></div>
       
-      <div class="render-target-wrap" v-if="activeDiary">
+      <div class="render-target-wrap" v-if="activeDiary" id="renderWrap">
         
         <component :is="'style'">{{ activeViewerCss }}</component>
         
@@ -355,6 +355,7 @@
         </div>
       </div>
 
+      <!-- 独立在外面的保存大按钮 -->
       <div class="viewer-actions" v-if="activeDiary">
         <button class="save-img-btn" @click="downloadCardImage">
           <i class="fas fa-camera"></i> 咔嚓，保存相片
@@ -559,12 +560,41 @@ const previewViewerCss = computed(() => {
 const downloadCardImage = async () => {
   const el = document.getElementById('diaryRenderNode')
   if (!el) return
+  
   window.dispatchEvent(new CustomEvent('sys-toast', { detail: '正在生成高清长图...' }))
+  
   if (!window.html2canvas) {
     await new Promise((res) => { const s = document.createElement('script'); s.src = 'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'; s.onload = res; document.head.appendChild(s) })
   }
+  
   try {
-    const canvas = await window.html2canvas(el, { scale: 3, backgroundColor: null, useCORS: true, allowTaint: true })
+    // 【核心修复】：临时解除包裹容器的高度限制，确保长文完全展开被渲染
+    const wrap = document.getElementById('renderWrap')
+    const oldMaxHeight = wrap.style.maxHeight
+    const oldOverflow = wrap.style.overflowY
+    const oldScrollTop = wrap.scrollTop
+    
+    wrap.style.maxHeight = 'none'
+    wrap.style.overflowY = 'visible'
+    wrap.scrollTop = 0
+    
+    // 等待浏览器重排渲染撑开
+    await new Promise(r => setTimeout(r, 150))
+    
+    const canvas = await window.html2canvas(el, { 
+      scale: 3, 
+      backgroundColor: null, 
+      useCORS: true, 
+      allowTaint: true,
+      windowWidth: el.scrollWidth,
+      windowHeight: el.scrollHeight
+    })
+    
+    // 恢复现场
+    wrap.style.maxHeight = oldMaxHeight || ''
+    wrap.style.overflowY = oldOverflow || ''
+    wrap.scrollTop = oldScrollTop
+
     const link = document.createElement('a')
     link.download = `Memory_Diary_${activeDiary.value.id}.png`
     link.href = canvas.toDataURL('image/png')
@@ -604,7 +634,8 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 </script>
 
 <style scoped>
-.diary-tab { padding: 10px 0 10px 0; position: relative; z-index: 1; }
+/* 移除这里的 z-index:1 解决层级穿插问题 */
+.diary-tab { padding: 10px 0 10px 0; position: relative; }
 .dropdown-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 90; }
 .diary-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding-right: 40px; position: relative; z-index: 100; }
 
@@ -681,11 +712,12 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 .close-modal { position: absolute; top: env(safe-area-inset-top, 30px); right: 20px; width: 36px; height: 36px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10000; cursor: pointer; color: #fff; transition: 0.2s; }
 .close-modal:active { background: rgba(255,255,255,0.3); }
 
+/* 必须提供最大高度否则长图无法滚动，但在截图时由 JS 临时放开限制 */
 .render-target-wrap { display: flex; justify-content: center; width: 100%; max-height: 80vh; overflow-y: auto; overflow-x: hidden; margin-bottom: 24px; animation: slideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); border-radius: 16px; }
 .render-target-wrap::-webkit-scrollbar { display: none; }
 @keyframes slideUp { from { transform: translateY(40px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
 
-/* 外挂的保存按钮，非常明显纯净 */
+/* 外挂的保存按钮 */
 .viewer-actions { display: flex; justify-content: center; animation: fadeIn 0.8s ease; }
 @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 

@@ -51,7 +51,7 @@ const defaultPresets = [
     name: '朱丝信笺', 
     layout: 'letter',
     css: `
-@font-face { font-family: 'CustomLetterFont'; src: url('https://files.catbox.moe/wj9hrt.ttf') format('truetype'); }
+@font-face { font-family: 'CustomLetterFont'; src: url('https://cfbed.1314883.xyz/file/1773522373868_默陌纸鸢行草书加粗.ttf') format('truetype'); }
 .letter-paper { background-color: #F5F0E6; width: 340px; box-shadow: 0 16px 30px rgba(0,0,0,0.2); padding: 20px 16px; position: relative; }
 .letter-grid { width: 100%; border: 1px solid #A64B4B; background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(180,60,60,0.45) 31px, rgba(180,60,60,0.45) 32px); background-size: 100% 32px; padding: 32px 16px 64px 16px; }
 .letter-text { font-family: "CustomLetterFont", "Kaiti SC", STKaiti, serif; font-size: 1.35rem; color: #1C2430; line-height: 32px; letter-spacing: 0.05em; transform: translateY(4px); }
@@ -85,7 +85,7 @@ const defaultPresets = [
   },
   { 
     id: 'diary_preset_pixel', 
-    name: '像素游戏框', 
+    name: '像素游戏框 ', 
     layout: 'pixel',
     css: `
 @import url("https://fontsapi.zeoseven.com/2001/main/result.css");
