@@ -197,34 +197,27 @@ const defaultPresets = [
   }
 ]
 
-const mergeDefaults = (stored, defaults) => {
-  const map = new Map(stored.map(p => [p.id, p]))
-  const result = [...stored]
+const migratePresets = (stored, defaults) => {
+  const defaultMap = new Map(defaults.map(p => [p.id, p]))
+  const result = []
+  stored.forEach(p => {
+    if (defaultMap.has(p.id)) {
+      result.push({ ...defaultMap.get(p.id) })
+    } else {
+      result.push(p)
+    }
+  })
   defaults.forEach(def => {
-    if (!map.has(def.id)) result.push(def)
+    if (!stored.find(p => p.id === def.id)) result.push(def)
   })
   return result
-}
-
-const upgradeIfNeeded = (list) => {
-  return list.map(p => {
-    if (p.id === 'diary_preset_letter' && p.css && (p.css.includes('file.icve.com.cn/file_doc/qdqqd/3361773519537267.ttf') || p.css.includes('Huiwen-MinchoGBK'))) {
-      const def = defaultPresets.find(d => d.id === p.id)
-      return { ...p, css: def.css }
-    }
-    if (p.id === 'diary_preset_magazine' && p.css && p.css.includes('.mag-text::first-letter')) {
-      const def = defaultPresets.find(d => d.id === p.id)
-      return { ...p, css: def.css }
-    }
-    return p
-  })
 }
 
 const load = (key, def) => {
   const s = localStorage.getItem(key)
   if (s) {
     const parsed = JSON.parse(s)
-    if (parsed.length > 0) return upgradeIfNeeded(mergeDefaults(parsed, def))
+    if (parsed.length > 0) return migratePresets(parsed, def)
   }
   return def
 }
@@ -270,3 +263,4 @@ export function useDiaryCardStyles() {
 
   return { presets, addPreset, updatePreset, deletePreset, getPresetById, exportPresets, importPresets }
 }
+
