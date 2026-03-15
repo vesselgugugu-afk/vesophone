@@ -231,7 +231,8 @@ ${baseStr}
         gender: fullJson.basic_info ? fullJson.basic_info.split('/')[1] : '未知',
         age: fullJson.basic_info ? fullJson.basic_info.split('/')[0] : '未知',
         isRevealed: false,
-        fullJson: fullJson // 将完整设定封存
+        fullJson: fullJson, // 将完整设定封存
+        baseInfo: baseInfo // 核心修改：将短简介存下来供名片展示
       })
 
       const chatId = await db.dating_chats.add({
@@ -300,4 +301,3 @@ ${baseStr}
     parseAIAction
   }
 }
-

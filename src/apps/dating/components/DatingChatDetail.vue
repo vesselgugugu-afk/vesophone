@@ -2,7 +2,6 @@
   <transition name="slide-up">
     <div v-if="show" class="dating-chat-page">
       
-      <!-- 极简模式 Header -->
       <div class="dating-chat-header">
         <i class="fas fa-chevron-left" @click="$emit('close')" style="font-size: 18px; padding: 10px; cursor: pointer;"></i>
         
@@ -22,21 +21,18 @@
         </div>
       </div>
 
-      <!-- 聊天区域复用 QQ 气泡 -->
       <div class="chat-area" ref="chatBox">
         <div class="system-intro" v-if="chatData?.status !== 'revealed'">
           你和 TA 相遇了。<br>对方的人设完全保密，试着去了解 TA 吧。
         </div>
 
         <template v-for="msg in messages" :key="msg.id">
-          <!-- 拦截内嵌的好友申请消息，渲染成特殊卡片 -->
           <div v-if="msg.type === 'reveal_request'" class="reveal-request-card">
              <div class="icon"><i class="fas fa-heartbeat"></i></div>
              <div class="text">{{ msg.content }}</div>
              <button class="btn-handle" @click="showRevealModal = true">点击处理</button>
           </div>
           
-          <!-- 核心修复：接上重试与转账的事件监听 -->
           <ChatMessageItem 
             v-else
             :msg="msg"
@@ -47,7 +43,7 @@
             @press="startPress"
             @clear-press="clearPress"
             @toggle-voice="(m) => { m.showText = !m.showText }"
-            @retry-msg="handleRetry"
+            @retry-msg="handleRetryMsg"
             @transfer-action="handleTransferAction"
           />
         </template>
@@ -62,7 +58,6 @@
         </div>
       </div>
 
-      <!-- 底部输入框 -->
       <ChatBottomBar 
         v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
@@ -79,11 +74,19 @@
         @open-summary="showSummaryPanel = true"
       />
 
-      <!-- 长按菜单与通用弹窗 -->
-      <ChatActionSheet v-model:show="actionSheet.show" :msg="actionSheet.msg" @quote="handleQuote" @edit="handleEditOwnMsg" @recall="handleRecallOwn" />
+      <!-- 核心修复 1: 监听抽屉抛出的 retry 和 regenerate 事件 -->
+      <ChatActionSheet 
+        v-model:show="actionSheet.show" 
+        :msg="actionSheet.msg" 
+        @quote="handleQuote" 
+        @edit="handleEditOwnMsg" 
+        @recall="handleRecallOwn"
+        @retry="handleRetryFromSheet"
+        @regenerate="handleRetryFromSheet"
+      />
+      
       <ChatGeneralAlerts v-model:apiErrorDetails="apiErrorDetails" v-model:pendingAutoSummary="pendingAutoSummary" :alert="alert" :chatTitle="pseudoChatObj.title" @close-alert="alert.show = false" @confirm-general="handleAlertConfirm" />
 
-      <!-- 核心修复：拥有丰富信息的简单档案卡片 -->
       <div class="simple-profile-mask" v-if="showSimpleProfile" @click.self="showSimpleProfile = false">
         <div class="simple-profile-box">
           <div class="sp-avatar">?</div>
@@ -93,18 +96,16 @@
             <span v-for="(t, i) in chatProfile?.fullJson?.tag || []" :key="i">{{ t }}</span>
           </div>
           
-          <!-- 读取扩写后的人设外在表现与外貌 -->
           <div class="sp-bio">
             <span class="sp-bio-title">社交宣言 / 面具</span>
-            <div class="sp-bio-text">"{{ chatProfile?.fullJson?.personality?.public_persona || '这家伙很神秘，什么都没写' }}"</div>
+            <div class="sp-bio-text">"{{ chatProfile?.baseInfo?.bio || chatProfile?.fullJson?.personality?.public_persona || '这家伙很神秘，什么都没写' }}"</div>
             
             <span class="sp-bio-title">外貌印象</span>
-            <div class="sp-bio-text" style="font-style: normal; margin-bottom: 0;">{{ chatProfile?.fullJson?.appearance || '未知' }}</div>
+            <div class="sp-bio-text" style="font-style: normal; margin-bottom: 0;">{{ chatProfile?.baseInfo?.appearance_summary || chatProfile?.fullJson?.appearance || '未知' }}</div>
           </div>
         </div>
       </div>
 
-      <!-- 权限拦截弹窗 -->
       <div class="restricted-modal-mask" v-if="restrictedAlert.show" @click.self="restrictedAlert.show = false">
         <div class="restricted-box">
           <div class="r-icon" :class="restrictedAlert.type"><i :class="restrictedAlert.icon"></i></div>
@@ -114,7 +115,6 @@
         </div>
       </div>
 
-      <!-- 揭晓确认弹窗 -->
       <div class="reveal-modal" v-if="showRevealModal">
         <div class="reveal-box">
           <div class="reveal-icon"><i class="fas fa-heartbeat"></i></div>
@@ -127,7 +127,6 @@
         </div>
       </div>
 
-      <!-- 挂载 QQ 的终端与总结面板 -->
       <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
       <SummaryPanel :show="showSummaryPanel" :chat="pseudoChatObj" @close="showSummaryPanel = false" />
 
@@ -226,7 +225,6 @@ const pseudoChatObj = computed(() => {
 
 const scrollToBottom = () => { nextTick(() => { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }) }
 
-// --- 气泡交互逻辑 ---
 const startPress = (msg) => { pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
 const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
 const handleQuote = () => { quotingText.value = actionSheet.value.msg.content }
@@ -244,53 +242,40 @@ const handleRecallOwn = async () => {
   if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
 }
 
-// 核心修复 1: 实现重 Roll 逻辑
-const handleRetry = async (msg) => {
-  // 删除被点击的 AI 消息
-  await db.messages.where({ id: msg.id }).delete()
-  messages.value = messages.value.filter(m => m.id !== msg.id)
-  // 重新触发 AI 生成
-  triggerAiReply()
+// 气泡组件里直接点击失败的重试
+const handleRetryMsg = (msg) => {
+  setTimeout(async () => {
+    await db.messages.where({ id: msg.id }).delete()
+    messages.value = messages.value.filter(m => m.id !== msg.id)
+    triggerAiReply()
+  }, 50)
 }
 
-// 核心修复 2: 实现转账点击逻辑 (领钱 / 退钱)
+// 核心修复 1: 抽屉菜单里的长按重Roll
+const handleRetryFromSheet = () => {
+  const targetMsg = actionSheet.value.msg
+  if (!targetMsg) return
+  actionSheet.value.show = false
+  setTimeout(async () => {
+    await db.messages.where({ id: targetMsg.id }).delete()
+    messages.value = messages.value.filter(m => m.id !== targetMsg.id)
+    triggerAiReply()
+  }, 300) // 给一点抽屉关闭的动画时间
+}
+
 const handleTransferAction = async (msg, action) => {
   if (msg.status !== 'pending') return
-  
   const newStatus = action === 'accept' ? 'accepted' : 'rejected'
   await db.messages.where({ id: msg.id }).modify({ status: newStatus })
-  
   const m = messages.value.find(x => x.id === msg.id)
   if (m) m.status = newStatus
-  
-  await pushLocalMessage({ 
-    role: 'system', 
-    type: 'text', 
-    content: action === 'accept' ? `你已领取了对方的转账 ￥${msg.amount}` : `你已退回了对方的转账` 
-  })
-  
-  // 领钱或退钱后，让 AI 做个反应
+  await pushLocalMessage({ role: 'system', type: 'text', content: action === 'accept' ? `你已领取了对方的转账 ￥${msg.amount}` : `你已退回了对方的转账` })
   triggerAiReply()
 }
 
-// --- 底栏受限拦截 ---
 const handleRestricted = (type) => {
-  if (type === 'memory') {
-    restrictedAlert.value = {
-      show: true, type: 'memory',
-      title: '记忆库锁定',
-      desc: '匿名模式下，你无法偷窥对方的精神记忆库。保持一点神秘感不好吗？',
-      icon: 'fas fa-lock'
-    }
-  }
-  if (type === 'offline') {
-    restrictedAlert.value = {
-      show: true, type: 'offline',
-      title: '安全中心提醒',
-      desc: '网警提醒您：网络交友需谨慎！\n匿名模式下严禁线下奔现，请先交换真实身份并加为好友。',
-      icon: 'fas fa-shield-alt'
-    }
-  }
+  if (type === 'memory') restrictedAlert.value = { show: true, type: 'memory', title: '记忆库锁定', desc: '匿名模式下，你无法偷窥对方的精神记忆库。保持一点神秘感不好吗？', icon: 'fas fa-lock' }
+  if (type === 'offline') restrictedAlert.value = { show: true, type: 'offline', title: '安全中心提醒', desc: '网警提醒您：网络交友需谨慎！\n匿名模式下严禁线下奔现，请先交换真实身份并加为好友。', icon: 'fas fa-shield-alt' }
 }
 
 const handleDisconnect = async () => {
@@ -299,18 +284,21 @@ const handleDisconnect = async () => {
     await db.dating_profiles.delete(chatData.value.profileId)
     await db.messages.where({ sessionId: `dating_${props.chatId}` }).delete()
     window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已彻底断开通信链路' }))
+    window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
     emit('close')
   }
 }
 
-const pushLocalMessage = async (msgObj) => {
-  const fullMsg = { ...msgObj, timestamp: Date.now(), id: Date.now() + Math.random(), sessionId: `dating_${props.chatId}` }
+const pushLocalMessage = async (msgObj, targetChatId = props.chatId) => {
+  const fullMsg = { ...msgObj, timestamp: Date.now(), id: Date.now() + Math.random(), sessionId: `dating_${targetChatId}` }
   await db.messages.add(fullMsg)
-  messages.value.push(fullMsg)
-  scrollToBottom()
-  if (chatData.value && fullMsg.role === 'user') {
-    chatData.value.messageCount += 1
-    await db.dating_chats.update(props.chatId, { messageCount: chatData.value.messageCount })
+  if (props.chatId === targetChatId && props.show) {
+    messages.value.push(fullMsg)
+    scrollToBottom()
+  }
+  const cData = await db.dating_chats.get(targetChatId)
+  if (cData && fullMsg.role === 'user') {
+    await db.dating_chats.update(targetChatId, { messageCount: cData.messageCount + 1 })
   }
 }
 
@@ -327,36 +315,19 @@ const sendSticker = async (name) => {
 
 const openMenuAlert = (type) => { 
   alert.value.type = type
-  if (type === 'transfer') {
-    alert.value.title = '发起转账'
-    alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }]
-  } else if (type === 'location') {
-    alert.value.title = '发送位置'
-    alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }]
-  } else if (type === 'voice') {
-    alert.value.title = '发送伪语音'
-    alert.value.inputs = [{ placeholder: '你想说的话', value: '' }]
-  } else if (type === 'image') {
-    alert.value.title = '发送伪图片'
-    alert.value.inputs = [{ placeholder: '视觉描述', value: '' }]
-  }
+  if (type === 'transfer') alert.value.title = '发起转账', alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }]
+  else if (type === 'location') alert.value.title = '发送位置', alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }]
+  else if (type === 'voice') alert.value.title = '发送伪语音', alert.value.inputs = [{ placeholder: '你想说的话', value: '' }]
+  else if (type === 'image') alert.value.title = '发送伪图片', alert.value.inputs = [{ placeholder: '视觉描述', value: '' }]
   alert.value.show = true 
 }
 
 const handleAlertConfirm = async () => { 
-  const t = alert.value.type
-  const vals = alert.value.inputs.map(i => i.value)
-  const baseObj = { role: 'user' }
-  
-  if (t === 'transfer' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
-  } else if (t === 'location' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'location', content: vals[0] })
-  } else if (t === 'voice' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'voice', content: vals[0], showText: false })
-  } else if (t === 'image' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'image', content: vals[0] })
-  }
+  const t = alert.value.type; const vals = alert.value.inputs.map(i => i.value); const baseObj = { role: 'user' }
+  if (t === 'transfer' && vals[0]) await pushLocalMessage({ ...baseObj, type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
+  else if (t === 'location' && vals[0]) await pushLocalMessage({ ...baseObj, type: 'location', content: vals[0] })
+  else if (t === 'voice' && vals[0]) await pushLocalMessage({ ...baseObj, type: 'voice', content: vals[0], showText: false })
+  else if (t === 'image' && vals[0]) await pushLocalMessage({ ...baseObj, type: 'image', content: vals[0] })
   alert.value.show = false 
 }
 
@@ -365,9 +336,21 @@ const triggerAiReply = async () => {
   isWaiting.value = true
   scrollToBottom()
   
+  const reqChatId = props.chatId
+  
   try {
     const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
-    apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: apiMessages, time: new Date().toLocaleTimeString() }
+    
+    // 核心修复 2: 精准替换并隐藏长段的 fullJson，保留 promptSuffix 规则指令
+    const safeReq = JSON.parse(JSON.stringify(apiMessages))
+    const sysIdx = safeReq.findIndex(x => x.role === 'system')
+    if (sysIdx > -1 && chatProfile.value?.fullJson) {
+      const secretStr = JSON.stringify(chatProfile.value.fullJson, null, 2)
+      // 用一句提示语替换掉那一长串人设
+      safeReq[sysIdx].content = safeReq[sysIdx].content.replace(secretStr, '\n\n[\n  "保密协议已生效",\n  "当前角色的深层人设 (JSON) 已被系统强制隐藏，防止剧透。"\n]\n\n')
+    }
+    
+    apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: safeReq, time: new Date().toLocaleTimeString() }
 
     const res = await fetch(apiUrl.value, {
       method: 'POST',
@@ -393,31 +376,34 @@ const triggerAiReply = async () => {
     if (matches.length > 0) {
       for (const m of matches) {
         const type = (m[0].match(/type="([^"]+)"/) || [])[1] || 'text'
-        await pushLocalMessage({ role: 'ai', type, content: m[1].trim() })
+        await pushLocalMessage({ role: 'ai', type, content: m[1].trim() }, reqChatId)
       }
     } else if (rawText.length > 0) {
-      await pushLocalMessage({ role: 'ai', type: 'text', content: rawText })
+      await pushLocalMessage({ role: 'ai', type: 'text', content: rawText }, reqChatId)
     }
+
+    if (props.chatId !== reqChatId) return
 
     if (action === 'exit') {
       window.dispatchEvent(new CustomEvent('sys-toast', { detail: '对方已离开聊天室。' }))
       if (playerProfile.value.settings?.autoDeleteOnExit) {
-        await db.dating_chats.delete(props.chatId)
+        await db.dating_chats.delete(reqChatId)
         await db.dating_profiles.delete(chatData.value.profileId)
-        await db.messages.where({ sessionId: `dating_${props.chatId}` }).delete()
+        await db.messages.where({ sessionId: `dating_${reqChatId}` }).delete()
+        window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
       } else {
-        await db.dating_chats.update(props.chatId, { status: 'exited' })
+        await db.dating_chats.update(reqChatId, { status: 'exited' })
       }
       setTimeout(() => emit('close'), 1500)
     } 
     else if (action === 'reveal') {
-      await pushLocalMessage({ role: 'system', type: 'reveal_request', content: '[系统] 对方好感度已达标，向你发送了交换真实身份的请求。' })
+      await pushLocalMessage({ role: 'system', type: 'reveal_request', content: '[系统] 对方好感度已达标，向你发送了交换真实身份的请求。' }, reqChatId)
     }
 
   } catch (e) {
-    apiErrorDetails.value = e.message
+    if (props.chatId === reqChatId) apiErrorDetails.value = e.message
   } finally {
-    isWaiting.value = false
+    if (props.chatId === reqChatId) isWaiting.value = false
   }
 }
 
@@ -457,6 +443,7 @@ const handleAcceptReveal = async () => {
   await addMemory(realSession.id, { characterId: realChar.id, type: 'milestone', source: 'dating_app', content: `我们在冷推(Spark)相遇，今天正式交换了姓名（原来TA叫${realName}），并互相发送了好友验证。` })
   
   await db.dating_chats.update(props.chatId, { status: 'revealed' })
+  window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
 
   window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已向对方发送好友申请！' }))
   emit('close')
@@ -486,7 +473,6 @@ const handleAcceptReveal = async () => {
 .reveal-request-card .text { font-size: 13px; color: #333; margin-bottom: 16px; font-weight: 600; line-height: 1.4; }
 .reveal-request-card .btn-handle { background: #14CCCC; color: white; border: none; padding: 8px 24px; border-radius: 20px; font-weight: 600; font-size: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(20, 204, 204, 0.3); }
 
-/* 档案详情卡片优化 */
 .simple-profile-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 500; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
 .simple-profile-box { background: #fff; width: 80%; border-radius: 24px; padding: 24px; text-align: center; animation: pop 0.2s; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
 .sp-avatar { width: 64px; height: 64px; border-radius: 50%; background: #f4f5f7; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ccc; }
@@ -498,7 +484,6 @@ const handleAcceptReveal = async () => {
 .sp-bio-title { font-weight: 700; color: #1c1c1e; margin-bottom: 6px; display: block; font-size: 11px; text-transform: uppercase; }
 .sp-bio-text { margin-bottom: 16px; font-style: italic; }
 
-/* 拦截警告 UI */
 .restricted-modal-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 550; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
 .restricted-box { background: #ffffff; width: 75%; border-radius: 24px; padding: 30px 24px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .r-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; margin: 0 auto 16px; }

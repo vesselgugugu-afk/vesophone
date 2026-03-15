@@ -23,7 +23,6 @@
             <span class="post-time" v-else-if="chat.status === 'exited'">已离开</span>
             <span class="post-time" v-else>交流中</span>
           </div>
-          <!-- 修复 Bug 4: 绝对不再触碰 fullJson.appearance -->
           <div class="chat-msg">
             {{ getPreviewMsg(chat) }}
           </div>
@@ -35,14 +34,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import db from '@/db'
 
 defineEmits(['open-chat'])
 
 const chatList = ref([])
 
-onMounted(async () => {
+const loadChats = async () => {
   try {
     const chats = await db.dating_chats.toArray()
     const profiles = await db.dating_profiles.toArray()
@@ -54,14 +53,24 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载列表失败', e)
   }
-})
+}
 
 const getPreviewMsg = (chat) => {
   if (chat.status === 'revealed') return '已加入 QQ 通讯录，快去找 TA 吧。'
   if (chat.status === 'exited') return '对方已离开了频道。'
   if (chat.type === 'blind' && chat.scenario) return `[相遇] ${chat.scenario}`
-  return chat.profile?.bio || '试着去了解 TA 吧...'
+  return chat.profile?.baseInfo?.bio || '试着去了解 TA 吧...'
 }
+
+onMounted(() => {
+  loadChats()
+  // 监听删档事件，实时刷新列表
+  window.addEventListener('dating-refresh-chats', loadChats)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dating-refresh-chats', loadChats)
+})
 </script>
 
 <style scoped>
