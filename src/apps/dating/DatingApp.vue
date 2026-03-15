@@ -2,7 +2,7 @@
   <transition name="slide-up">
     <div v-if="show" class="dating-app-container">
       
-      <!-- 带有明确关闭按钮的顶部 Header -->
+      <!-- 修正 Header Padding，删除无用的 iOS 条 -->
       <header class="dating-header">
         <div style="display:flex; align-items:center; gap:12px;">
           <div class="close-icon-btn" @click="$emit('close')">
@@ -13,33 +13,24 @@
         <i class="fas fa-bell header-icon"></i>
       </header>
 
-      <!-- 动态加载三大 Tab 内容 -->
       <div class="dating-main-content">
         <DiscoverTab v-if="activeTab === 'discover'" @open-swipe="showSwipeModal = true" @open-random="showRandomModal = true" />
         <ChatsTab v-if="activeTab === 'chats'" @open-chat="handleOpenChat" />
         <ProfileTab v-if="activeTab === 'profile'" @open-settings="showSettingsModal = true" />
       </div>
 
-      <!-- 底部导航 -->
       <nav class="dating-bottom-nav">
         <div class="nav-item" :class="{ active: activeTab === 'discover' }" @click="switchTab('discover', '冷推')">
-          <i class="fas fa-compass"></i>
-          <span>广场</span>
+          <i class="fas fa-compass"></i><span>广场</span>
         </div>
         <div class="nav-item" :class="{ active: activeTab === 'chats' }" @click="switchTab('chats', '私聊')">
-          <i class="fas fa-comment-dots"></i>
-          <span>私聊</span>
+          <i class="fas fa-comment-dots"></i><span>私聊</span>
         </div>
         <div class="nav-item" :class="{ active: activeTab === 'profile' }" @click="switchTab('profile', '我的')">
-          <i class="fas fa-user"></i>
-          <span>我的</span>
+          <i class="fas fa-user"></i><span>我的</span>
         </div>
       </nav>
 
-      <div class="close-app-btn" @click="$emit('close')"><div class="home-indicator"></div></div>
-
-      <!-- ================= 弹窗组 ================= -->
-      <!-- 监听所有创建聊天室事件，执行统一跳转方法 -->
       <SwipeModal :show="showSwipeModal" @close="showSwipeModal = false" @open-filter="showFilterModal = true" @start-chat="jumpToChat" />
       <FilterModal :show="showFilterModal" @close="showFilterModal = false" />
       <RandomSetupModal :show="showRandomModal" @close="showRandomModal = false" @start-chat="jumpToChat" />
@@ -91,26 +82,19 @@ const switchTab = (tabId, title) => {
   headerTitle.value = title
 }
 
-// 正常从私聊列表打开聊天
 const handleOpenChat = (chatId) => {
   activeChatId.value = chatId
   showChatDetail.value = true
 }
 
-// 核心新增：无缝跳转路由逻辑
 const jumpToChat = (newChatId) => {
-  // 1. 关闭前置生成的各种弹窗
   showSwipeModal.value = false
   showRandomModal.value = false
-  
-  // 2. 自动切换到底部导航栏的“私聊”页面
   switchTab('chats', '私聊')
-  
-  // 3. 打开目标聊天室
   setTimeout(() => {
     activeChatId.value = newChatId
     showChatDetail.value = true
-  }, 300) // 给一点弹窗关闭的过渡时间，体验更丝滑
+  }, 300) 
 }
 </script>
 
@@ -119,19 +103,17 @@ const jumpToChat = (newChatId) => {
 .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
 
-.dating-header { padding: calc(env(safe-area-inset-top) + 16px) 20px 16px; background: #ffffff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e5ea; z-index: 10; }
+/* 修复了顶部留白过大的问题 */
+.dating-header { padding: calc(env(safe-area-inset-top) + 8px) 16px 12px; background: #ffffff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e5ea; z-index: 10; }
 .header-title { font-size: 18px; font-weight: 700; letter-spacing: 1px; margin: 0; }
 .header-icon { color: #1c1c1e; font-size: 18px; cursor: pointer; }
 .close-icon-btn { width: 30px; height: 30px; background: #f4f5f7; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 14px; cursor: pointer; }
 .close-icon-btn:active { background: #e5e5ea; }
 
 .dating-main-content { flex: 1; overflow-y: auto; padding-bottom: 80px; }
-.dating-bottom-nav { position: absolute; bottom: 0; width: 100%; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid #e5e5ea; display: flex; justify-content: space-around; padding: 12px 0 calc(12px + env(safe-area-inset-bottom) + 20px); z-index: 100; }
+.dating-bottom-nav { position: absolute; bottom: 0; width: 100%; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid #e5e5ea; display: flex; justify-content: space-around; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); z-index: 100; }
 .nav-item { display: flex; flex-direction: column; align-items: center; color: #c7c7cc; cursor: pointer; gap: 4px; transition: color 0.2s; }
 .nav-item.active { color: #14CCCC; }
 .nav-item i { font-size: 20px; }
 .nav-item span { font-size: 10px; font-weight: 600; }
-.close-app-btn { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 100px; height: 20px; display: flex; justify-content: center; align-items: center; z-index: 999; cursor: pointer; }
-.home-indicator { width: 40px; height: 4px; background: #000; border-radius: 4px; opacity: 0.3; }
 </style>
-

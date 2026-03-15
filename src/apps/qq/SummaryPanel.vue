@@ -290,6 +290,7 @@ const parseMemoryJson = (rawText) => {
   }
 }
 
+// 核心修复点：强制数据类型安全化
 const normalizeParsedResult = (parsed, fallbackSource) => {
   if (!parsed) return { memories: [], diary: null }
   const core = Array.isArray(parsed.core_updates) ? parsed.core_updates : []
@@ -298,8 +299,12 @@ const normalizeParsedResult = (parsed, fallbackSource) => {
 
   const memories = all.map(m => {
     const t = m || {}
-    let cid = t.character_id || t.characterId || null
+    let cid = t.character_id !== undefined ? t.character_id : (t.characterId !== undefined ? t.characterId : null)
+    
+    // 强制转换为 Number 格式，破除 IndexedDB 类型严格匹配失败的 Bug
     if (cid === '') cid = null
+    else if (cid !== null && !isNaN(Number(cid))) cid = Number(cid)
+
     return {
       characterId: cid,
       type: t.type || 'event',
@@ -308,7 +313,7 @@ const normalizeParsedResult = (parsed, fallbackSource) => {
       weight: Number(t.weight || t.importance || 1),
       keywords: Array.isArray(t.keywords) ? t.keywords : [],
       source: t.source || fallbackSource,
-      timestamp: t.timestamp || Date.now(),
+      timestamp: Number(t.timestamp || Date.now()),
       date: t.date || new Date().toLocaleString()
     }
   }).filter(m => m.content && m.content.trim())
@@ -317,7 +322,7 @@ const normalizeParsedResult = (parsed, fallbackSource) => {
   if (parsed.diary && (parsed.diary.content || parsed.diary.text)) {
     diary = {
       content: parsed.diary.content || parsed.diary.text || '',
-      timestamp: parsed.diary.timestamp || Date.now(),
+      timestamp: Number(parsed.diary.timestamp || Date.now()),
       date: parsed.diary.date || new Date().toLocaleString(),
       source: fallbackSource
     }

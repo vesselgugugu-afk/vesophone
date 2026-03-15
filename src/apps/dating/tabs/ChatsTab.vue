@@ -23,8 +23,9 @@
             <span class="post-time" v-else-if="chat.status === 'exited'">已离开</span>
             <span class="post-time" v-else>交流中</span>
           </div>
+          <!-- 修复 Bug 4: 绝对不再触碰 fullJson.appearance -->
           <div class="chat-msg">
-            {{ chat.status === 'revealed' ? '已加入 QQ 通讯录，快去找 TA 吧。' : (chat.scenario || chat.profile?.fullJson?.appearance || '试着打个招呼吧...') }}
+            {{ getPreviewMsg(chat) }}
           </div>
         </div>
       </div>
@@ -45,31 +46,32 @@ onMounted(async () => {
   try {
     const chats = await db.dating_chats.toArray()
     const profiles = await db.dating_profiles.toArray()
-    
-    // 组装数据并倒序（最新的在上面）
     const enriched = chats.map(c => {
       const p = profiles.find(prof => prof.id === c.profileId)
       return { ...c, profile: p || {} }
     })
-    
     chatList.value = enriched.reverse()
   } catch (e) {
     console.error('加载列表失败', e)
   }
 })
+
+const getPreviewMsg = (chat) => {
+  if (chat.status === 'revealed') return '已加入 QQ 通讯录，快去找 TA 吧。'
+  if (chat.status === 'exited') return '对方已离开了频道。'
+  if (chat.type === 'blind' && chat.scenario) return `[相遇] ${chat.scenario}`
+  return chat.profile?.bio || '试着去了解 TA 吧...'
+}
 </script>
 
 <style scoped>
 .tab-chats { animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
 .chat-list { padding: 12px 20px; }
 .chat-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e5e5ea; cursor: pointer; }
 .chat-item:active { background-color: #f9f9f9; }
-
 .chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #e0e0e0, #f5f5f5); display: flex; align-items: center; justify-content: center; color: #8e8e93; font-size: 20px; position: relative; }
 .chat-avatar.revealed { background: linear-gradient(135deg, rgba(20, 204, 204, 0.1), #e0f7f7); color: #14CCCC; }
-
 .chat-info { flex: 1; overflow: hidden; }
 .chat-name-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .chat-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; color: #1c1c1e; }

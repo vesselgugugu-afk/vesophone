@@ -870,8 +870,12 @@ const checkAndRunAutoSummary = async () => {
         const parsed = parseMemoryJson(rawText)
         const normalized = normalizeParsedResult(parsed, props.chat.isGroup ? 'group_chat' : 'chat')
         const previewText = buildPreviewText(normalized)
+        
+        // 核心修改：把 JSON 字符串直接拼接到文本里展示在自动总结弹窗中
+        const jsonStr = extractJsonString(rawText) || rawText
+
         if (previewText) {
-          pendingAutoSummary.value = previewText
+          pendingAutoSummary.value = `【提取内容预览】\n${previewText}\n\n【原始 JSON 返回】\n${jsonStr}`
           pendingAutoSummaryPayload.value = normalized
         } else if (rawText) {
           pendingAutoSummary.value = rawText

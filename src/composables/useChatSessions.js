@@ -71,7 +71,7 @@ if (!localStorage.getItem('dbMigrated_v2')) {
         return { 
           ...m, 
           sessionId: chat.id, 
-          characterId: charId,
+          characterId: charId !== null && !isNaN(Number(charId)) ? Number(charId) : charId,
           content: m.content || m.text || '',
           type: m.type || 'event',
           source: m.source || 'chat',
@@ -89,7 +89,7 @@ if (!localStorage.getItem('dbMigrated_v2')) {
       await db.memories.add({ 
         id: Date.now(), 
         sessionId: chat.id, 
-        characterId: charId,
+        characterId: charId !== null && !isNaN(Number(charId)) ? Number(charId) : charId,
         text: chat.memory, 
         content: chat.memory,
         date: new Date().toLocaleString(),
@@ -109,7 +109,6 @@ if (!localStorage.getItem('dbMigrated_v2')) {
   localStorage.setItem('dbMigrated_v2', 'true')
 }
 
-// 核心重构：剥离大型资源保存，防止 LocalStorage 崩溃
 watch(chatSessions, (v) => {
   const lightData = v.map(c => ({ ...c, overrideAvatar: '', bgImage: '' }))
   localStorage.setItem(KEY, JSON.stringify(lightData))
@@ -118,7 +117,6 @@ watch(chatSessions, (v) => {
 watch(cssPresets, (v) => localStorage.setItem(KEY_CSS, JSON.stringify(v)), { deep: true })
 watch(friendRequests, (v) => localStorage.setItem(KEY_FRIENDS, JSON.stringify(v)), { deep: true })
 
-// 核心重构：热挂载聊天背景和头像
 ;(async () => {
   try {
     const records = await db.media.toArray()
@@ -297,6 +295,10 @@ export function useChatSessions() {
     if (fullMem.importance === undefined) fullMem.importance = 1
     if (fullMem.weight === undefined) fullMem.weight = fullMem.importance
     if (fullMem.characterId === undefined) fullMem.characterId = getDefaultCharacterId(sessionId)
+    
+    // 强制转换为 Number 保护底层
+    if (fullMem.characterId !== null && !isNaN(Number(fullMem.characterId))) fullMem.characterId = Number(fullMem.characterId)
+
     if (fullMem.keywords === undefined) fullMem.keywords = []
     if (fullMem.isArchived === undefined) fullMem.isArchived = false
 
@@ -319,6 +321,10 @@ export function useChatSessions() {
     if (normalized.importance === undefined) normalized.importance = 1
     if (normalized.weight === undefined) normalized.weight = normalized.importance
     if (normalized.characterId === undefined) normalized.characterId = getDefaultCharacterId(sessionId)
+    
+    // 强制转换为 Number 保护底层
+    if (normalized.characterId !== null && !isNaN(Number(normalized.characterId))) normalized.characterId = Number(normalized.characterId)
+
     if (normalized.keywords === undefined) normalized.keywords = []
     if (normalized.isArchived === undefined) normalized.isArchived = false
     
@@ -342,9 +348,10 @@ export function useChatSessions() {
     return results
   }
 
+  // 核心修复点：使用 anyOf 进行双重兼容匹配（数字和字符串全部拿下），拯救已经被写坏的脏数据！
   const getMemoriesByCharacter = async (characterId) => {
     if (!characterId) return []
-    return await db.memories.where({ characterId }).toArray()
+    return await db.memories.where('characterId').anyOf(Number(characterId), String(characterId)).toArray()
   }
 
   const getMemoriesBySession = async (sessionId) => {
@@ -375,10 +382,14 @@ export function useChatSessions() {
   const addDiary = async (sessionId, diaryObj) => {
     if (!diaryObj) return null
     if (Array.isArray(diaryObj)) throw new Error('Diary payload invalid: array')
+    
+    let safeCid = diaryObj.characterId || getDefaultCharacterId(sessionId)
+    if (safeCid !== null && !isNaN(Number(safeCid))) safeCid = Number(safeCid)
+
     const fullDiary = {
       id: diaryObj.id,
       sessionId,
-      characterId: diaryObj.characterId || getDefaultCharacterId(sessionId),
+      characterId: safeCid,
       date: diaryObj.date || new Date().toLocaleString(),
       timestamp: diaryObj.timestamp || Date.now(),
       content: diaryObj.content || diaryObj.text || '',
@@ -409,12 +420,14 @@ export function useChatSessions() {
     activeDiaries.value = activeDiaries.value.filter(d => d.id !== diaryId)
   }
 
+  // 核心修复点：双重兼容匹配
   const getDiariesByCharacter = async (characterId, includeArchived = true) => {
     if (!characterId) return []
-    if (includeArchived) {
-      return await db.diaries.where({ characterId }).toArray()
+    let arr = await db.diaries.where('characterId').anyOf(Number(characterId), String(characterId)).toArray()
+    if (!includeArchived) {
+      arr = arr.filter(d => !d.isArchived)
     }
-    return await db.diaries.where({ characterId, isArchived: false }).toArray()
+    return arr
   }
 
   const archiveDiaries = async (diaryIds) => {
