@@ -376,7 +376,7 @@ const getAppBg = (item) => {
 }
 
 const getDefaultIcon = (appId) => {
-  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt', memory: 'fas fa-book', dating: 'fas fa-fire' }
+  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt', memory: 'fas fa-book', dating: 'fas fa-smile-wink' }
   return icons[appId] || 'fas fa-cube'
 }
 

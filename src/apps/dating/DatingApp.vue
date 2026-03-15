@@ -2,9 +2,14 @@
   <transition name="slide-up">
     <div v-if="show" class="dating-app-container">
       
-      <!-- 顶部 Header -->
+      <!-- 带有明确关闭按钮的顶部 Header -->
       <header class="dating-header">
-        <h1 class="header-title">{{ headerTitle }}</h1>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="close-icon-btn" @click="$emit('close')">
+            <i class="fas fa-times"></i>
+          </div>
+          <h1 class="header-title">{{ headerTitle }}</h1>
+        </div>
         <i class="fas fa-bell header-icon"></i>
       </header>
 
@@ -34,12 +39,11 @@
       <div class="close-app-btn" @click="$emit('close')"><div class="home-indicator"></div></div>
 
       <!-- ================= 弹窗组 ================= -->
-      <SwipeModal :show="showSwipeModal" @close="showSwipeModal = false" @open-filter="showFilterModal = true" />
+      <!-- 监听所有创建聊天室事件，执行统一跳转方法 -->
+      <SwipeModal :show="showSwipeModal" @close="showSwipeModal = false" @open-filter="showFilterModal = true" @start-chat="jumpToChat" />
       <FilterModal :show="showFilterModal" @close="showFilterModal = false" />
-      <RandomSetupModal :show="showRandomModal" @close="showRandomModal = false" @start-chat="handleOpenChat" />
+      <RandomSetupModal :show="showRandomModal" @close="showRandomModal = false" @start-chat="jumpToChat" />
       <DatingChatDetail :show="showChatDetail" :chatId="activeChatId" @close="showChatDetail = false" />
-      
-      <!-- 挂载设置弹窗 -->
       <SettingsModal :show="showSettingsModal" @close="showSettingsModal = false" />
       
     </div>
@@ -87,9 +91,26 @@ const switchTab = (tabId, title) => {
   headerTitle.value = title
 }
 
+// 正常从私聊列表打开聊天
 const handleOpenChat = (chatId) => {
   activeChatId.value = chatId
   showChatDetail.value = true
+}
+
+// 核心新增：无缝跳转路由逻辑
+const jumpToChat = (newChatId) => {
+  // 1. 关闭前置生成的各种弹窗
+  showSwipeModal.value = false
+  showRandomModal.value = false
+  
+  // 2. 自动切换到底部导航栏的“私聊”页面
+  switchTab('chats', '私聊')
+  
+  // 3. 打开目标聊天室
+  setTimeout(() => {
+    activeChatId.value = newChatId
+    showChatDetail.value = true
+  }, 300) // 给一点弹窗关闭的过渡时间，体验更丝滑
 }
 </script>
 
@@ -97,9 +118,13 @@ const handleOpenChat = (chatId) => {
 .dating-app-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #f4f5f7; color: #1c1c1e; z-index: 500; display: flex; flex-direction: column; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
+
 .dating-header { padding: calc(env(safe-area-inset-top) + 16px) 20px 16px; background: #ffffff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e5ea; z-index: 10; }
 .header-title { font-size: 18px; font-weight: 700; letter-spacing: 1px; margin: 0; }
 .header-icon { color: #1c1c1e; font-size: 18px; cursor: pointer; }
+.close-icon-btn { width: 30px; height: 30px; background: #f4f5f7; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 14px; cursor: pointer; }
+.close-icon-btn:active { background: #e5e5ea; }
+
 .dating-main-content { flex: 1; overflow-y: auto; padding-bottom: 80px; }
 .dating-bottom-nav { position: absolute; bottom: 0; width: 100%; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid #e5e5ea; display: flex; justify-content: space-around; padding: 12px 0 calc(12px + env(safe-area-inset-bottom) + 20px); z-index: 100; }
 .nav-item { display: flex; flex-direction: column; align-items: center; color: #c7c7cc; cursor: pointer; gap: 4px; transition: color 0.2s; }
@@ -109,3 +134,4 @@ const handleOpenChat = (chatId) => {
 .close-app-btn { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 100px; height: 20px; display: flex; justify-content: center; align-items: center; z-index: 999; cursor: pointer; }
 .home-indicator { width: 40px; height: 4px; background: #000; border-radius: 4px; opacity: 0.3; }
 </style>
+

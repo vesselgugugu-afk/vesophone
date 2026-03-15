@@ -6,15 +6,17 @@
       <div class="dating-chat-header">
         <i class="fas fa-chevron-left" @click="$emit('close')" style="font-size: 18px; padding: 10px; cursor: pointer;"></i>
         <div class="header-info">
-          <div class="chat-title">{{ chatProfile?.nickname || '匿名网友' }} <span class="badge">{{ chatData?.type === 'blind' ? '盲聊' : '速配' }}</span></div>
-          <div class="chat-sub">保密协议生效中...</div>
+          <div class="chat-title">{{ pseudoChatObj.title }} <span class="badge" v-if="chatData">{{ chatData.type === 'blind' ? '盲聊' : '速配' }}</span></div>
+          <div class="chat-sub" v-if="chatData?.status === 'revealed'">TA 已经加入了你的 QQ 通讯录</div>
+          <div class="chat-sub" v-else-if="chatData?.status === 'exited'">对方已离开，当前为历史记录</div>
+          <div class="chat-sub" v-else>保密协议生效中...</div>
         </div>
         <i class="fas fa-ellipsis-h" style="font-size: 18px; padding: 10px; color: #8e8e93;"></i>
       </div>
 
       <!-- 聊天区域复用 QQ 气泡 -->
       <div class="chat-area" ref="chatBox">
-        <div class="system-intro">
+        <div class="system-intro" v-if="chatData?.status !== 'revealed'">
           你和 TA 相遇了。<br>对方的人设完全保密，试着去了解 TA 吧。
         </div>
 
@@ -39,8 +41,9 @@
         </div>
       </div>
 
-      <!-- 底部输入框，完全接入多媒体事件 -->
+      <!-- 底部输入框，如果已揭晓或离开则隐藏 -->
       <ChatBottomBar 
+        v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
         :musicState="{}"
         :isSelectionMode="false"
@@ -61,11 +64,12 @@
         @recall="handleRecallOwn"
       />
 
-      <!-- 输入内容弹窗 (发图/发语音等) -->
+      <!-- 核心修复：防止自动总结误触弹窗！ -->
       <ChatGeneralAlerts 
         v-model:apiErrorDetails="apiErrorDetails"
+        v-model:pendingAutoSummary="pendingAutoSummary"
         :alert="alert"
-        :chatTitle="chatProfile?.nickname"
+        :chatTitle="pseudoChatObj.title"
         @close-alert="alert.show = false"
         @confirm-general="handleAlertConfirm"
       />
@@ -124,6 +128,9 @@ const quotingText = ref('')
 const alert = ref({ show: false, type: '', title: '', desc: '', inputs: null })
 const apiErrorDetails = ref(null)
 
+// 核心修复：补充缺失的绑值，阻止由于 undefined 导致的异常弹窗
+const pendingAutoSummary = ref(null)
+
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
 
@@ -136,12 +143,15 @@ watch(() => props.show, async (val) => {
       scrollToBottom()
     }
   } else {
+    chatData.value = null
+    chatProfile.value = null
     messages.value = []
   }
 })
 
+// 构造极其严谨的“伪装会话对象”，避免组件读取属性报错
 const pseudoChatObj = computed(() => {
-  if (!chatProfile.value) return {}
+  if (!chatProfile.value) return { title: '加载中...', settings: {} }
   const fakeChar = {
     id: `dating_char_${chatProfile.value.id}`,
     name: chatProfile.value.nickname,
@@ -157,6 +167,7 @@ const pseudoChatObj = computed(() => {
     overrideAvatar: '',
     settings: {
       contextMessageCount: 20,
+      autoSummaryCount: 0, // 核心防爆：强制冷推模式不启动自动总结
       promptSuffix: getDatingAnonymityRule(chatProfile.value)
     },
     variablesState: {},
@@ -171,11 +182,7 @@ const scrollToBottom = () => {
   })
 }
 
-// ==== 基础交互：长按与各种消息发送 ====
-
-const startPress = (msg) => { 
-  pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) 
-}
+const startPress = (msg) => { pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
 const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
 
 const handleQuote = () => { quotingText.value = actionSheet.value.msg.content }
@@ -256,9 +263,6 @@ const handleAlertConfirm = async () => {
   triggerAiReply()
 }
 
-
-// ==== 核心：完整解析 AI 回复 (支持多媒体解析) ====
-
 const triggerAiReply = async () => {
   if (isWaiting.value) return
   isWaiting.value = true
@@ -276,16 +280,13 @@ const triggerAiReply = async () => {
     const data = await res.json()
     let rawText = data.choices[0].message?.content || ''
     
-    // 1. 拦截变量更新 (虽然匿名模式可能用不上，但防止污染对话)
     const statusRegex = /<statue_update>([\s\S]*?)<\/statue_update>/gi
     rawText = rawText.replace(statusRegex, '').trim()
 
-    // 2. 拦截冷推专属 Reveal / Exit 动作
     const parsedAction = parseAIAction(rawText)
     rawText = parsedAction.cleanText
     const action = parsedAction.action
 
-    // 3. 正则解析多媒体消息 (<msg type="...">)
     const msgRegex = /<msg(?:[^>]*)>([\s\S]*?)<\/msg>/gi
     const matches = [...rawText.matchAll(msgRegex)]
 
@@ -302,7 +303,6 @@ const triggerAiReply = async () => {
         const mType = attrs.type || 'text'
         let mContent = m[1].trim()
         
-        // 如果是最后一条消息且带有非标签的文字，作为追加文字 (一般冷推里不太会出现，防止意外)
         if (i === matches.length - 1 && trailingText) {
            mContent += '\n' + trailingText
         }
@@ -336,7 +336,6 @@ const triggerAiReply = async () => {
       await pushLocalMessage({ role: 'ai', type: 'text', content: rawText })
     }
 
-    // 4. 处理触发的最终动作
     if (action === 'exit') {
       window.dispatchEvent(new CustomEvent('sys-toast', { detail: '对方已离开聊天室。' }))
       if (playerProfile.value.settings?.autoDeleteOnExit) {
@@ -359,8 +358,6 @@ const triggerAiReply = async () => {
     isWaiting.value = false
   }
 }
-
-// ==== 数据大迁移 ====
 
 const handleRejectReveal = async () => {
   showRevealModal.value = false
