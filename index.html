@@ -2,16 +2,34 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
+  <!-- viewport-fit=cover 是突破刘海屏、水滴屏限制，强制全屏的核心 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Veso Phone</title>
-  <meta name="theme-color" content="#f4f5f7">
   
-  <!-- 核心修改：补充各平台全屏与状态栏穿透的增强标签 -->
+  <!-- 适配 Android 状态栏颜色 (如果不全屏，保底显示深色而不是刺眼的白色) -->
+  <meta name="theme-color" content="#000000">
+  
+  <!-- 针对 iOS 与 Android 的 PWA 沉浸式增强标签 -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- 强制 iOS 状态栏透明，让网页背景直接透过去 -->
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- 强制根节点撑满整个物理屏幕，消除所有的默认黑边/白边 -->
+  <style>
+    html, body, #app {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100vw;
+      height: 100vh;
+      /* 优先使用动态视口高度，完美解决手机底部小白条遮挡问题 */
+      height: 100dvh; 
+      overflow: hidden;
+      background-color: #000; /* 底色设为黑，避免加载时闪白光 */
+    }
+  </style>
   <script type="module" crossorigin src="/vesophone/assets/index-CCJmDrVX.js"></script>
   <link rel="stylesheet" crossorigin href="/vesophone/assets/index-BfoCx2qx.css">
 <link rel="manifest" href="/vesophone/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/vesophone/registerSW.js"></script></head>
