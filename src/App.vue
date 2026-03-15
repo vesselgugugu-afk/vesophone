@@ -52,7 +52,7 @@
               <!-- 赋予组件点击路由能力 -->
               <div v-else-if="item.type === 'widget'" class="widget-wrap" @click.stop="handleWidgetClick(item)">
                 <DesktopWidgets :item="item" />
-                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)">
+                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)" @mousedown.stop @touchstart.stop>
                   <div class="edit-btn-glass"><i class="fas fa-pencil-alt"></i> 配置</div>
                 </div>
               </div>
@@ -79,7 +79,7 @@
 
               <div v-else-if="item.type === 'widget'" class="widget-wrap" @click.stop="handleWidgetClick(item)">
                 <DesktopWidgets :item="item" />
-                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)">
+                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)" @mousedown.stop @touchstart.stop>
                   <div class="edit-btn-glass"><i class="fas fa-pencil-alt"></i> 配置</div>
                 </div>
               </div>
@@ -151,16 +151,14 @@
             <h3 style="font-size:16px; font-weight:700; text-align:center; color:var(--text-main);">实例配置</h3>
             
             <div class="config-form" style="margin-top:15px;">
-              <template v-if="['ins', 'custom_card', 'health', 'finance', 'photo_wall', 'diy_html'].includes(editingWidget.component)">
-                <div class="config-field">
-                  <label class="config-label">文案 / 标签</label>
-                  <input type="text" class="config-input" v-model="widgetDraft.title" placeholder="主要文案" />
-                </div>
-                <div class="config-field" v-if="!['photo_wall'].includes(editingWidget.component)">
-                  <label class="config-label">副标题 / 描述</label>
-                  <input type="text" class="config-input" v-model="widgetDraft.desc" placeholder="详细说明文字" />
-                </div>
-              </template>
+              <div class="config-field">
+                <label class="config-label">文案 / 标签 (部分组件有效)</label>
+                <input type="text" class="config-input" v-model="widgetDraft.title" placeholder="主要文案" />
+              </div>
+              <div class="config-field" v-if="!['photo_wall'].includes(editingWidget.component)">
+                <label class="config-label">副标题 / 描述</label>
+                <input type="text" class="config-input" v-model="widgetDraft.desc" placeholder="详细说明文字" />
+              </div>
 
               <!-- 快捷聊天绑定 -->
               <template v-if="editingWidget.component === 'quick_chat'">
@@ -284,7 +282,7 @@ const handleAppClick = (item) => {
 const handleWidgetClick = (item) => {
   if (isEditMode.value) return
   
-  if (item.component === 'record_player') {
+  if (item.component === 'record_player' || item.component === 'colisten_card') {
     activeApp.value = 'music'
   } 
   else if (item.component === 'quick_chat') {

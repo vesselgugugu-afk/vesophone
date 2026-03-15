@@ -58,16 +58,19 @@
       <div class="cal-weekday">{{ currentWeekday }}</div>
     </div>
 
-    <div v-else-if="item.component === 'colisten_card'" class="colisten-card glass w-full" :style="getImgStyle(item.props?.bgImage)">
-      <div class="co-avatar" :style="getImgStyle(userProfile.avatar)"></div>
-      <div class="co-wire">
-        <div class="wire-line"></div>
-        <div class="co-status" :class="{ 'pulse': musicState.isPlaying }">
+    <!-- 重新设计的悬浮透明羁绊连线卡片 -->
+    <div v-else-if="item.component === 'colisten_card'" class="colisten-card-v2 w-full">
+      <div class="co-avatar-v2" :style="getImgStyle(userProfile.avatar)"></div>
+      <div class="co-wire-v2">
+        <div class="wire-line-v2" :class="{ 'wire-active': musicState.isPlaying }"></div>
+        <div class="co-status-v2" :class="{ 'pulse': musicState.isPlaying }">
           <i class="fas" :class="musicState.isPlaying ? 'fa-music' : 'fa-headphones'"></i>
         </div>
       </div>
-      <div class="co-avatar" :style="getImgStyle(coListenAvatar)">
-        <div class="no-char" v-if="!coListenAvatar">?</div>
+      <div class="co-avatar-v2" :style="getImgStyle(coListenAvatar)">
+        <div class="no-char" v-if="!coListenAvatar">
+          <i class="fas fa-user-plus"></i>
+        </div>
       </div>
     </div>
 
@@ -88,6 +91,7 @@ import { useTime } from '@/composables/useTime'
 import { useProfile } from '@/composables/useProfile'
 import { useMusic } from '@/composables/useMusic'
 import { useChatSessions } from '@/composables/useChatSessions'
+import { useCharacters } from '@/composables/useCharacters'
 
 const props = defineProps({ item: { type: Object, required: true } })
 
@@ -95,6 +99,7 @@ const { time, date } = useTime()
 const { userProfile } = useProfile()
 const { musicState } = useMusic()
 const { sessions } = useChatSessions()
+const { characters } = useCharacters()
 
 const getImgStyle = (url) => url ? { backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}
 
@@ -118,6 +123,11 @@ const currentWeekday = today.toLocaleString('zh-CN', { weekday: 'long' })
 
 const coListenAvatar = computed(() => {
   if (!musicState.coListenCharId) return ''
+  // 第一重：尝试按角色库 ID 匹配
+  const char = characters.value.find(c => c.id === musicState.coListenCharId)
+  if (char && char.avatar) return char.avatar
+  
+  // 第二重：尝试按聊天 Session ID 匹配
   const chat = sessions.value.find(c => c.id === musicState.coListenCharId)
   return chat?.participants?.[0]?.avatar || ''
 })
@@ -181,14 +191,18 @@ const qcAvatar = computed(() => {
 .cal-day { font-size: 60px; font-weight: 300; color: #222; font-family: -apple-system, sans-serif; line-height: 1; z-index: 2; }
 .cal-weekday { font-size: 12px; color: #888; font-weight: 600; letter-spacing: 1px; z-index: 2; }
 
-.colisten-card { border-radius: 24px; display: flex; justify-content: space-around; align-items: center; padding: 0 20px; background: linear-gradient(to right, rgba(255,255,255,0.8), rgba(255,255,255,0.4)); position: relative; overflow: hidden; }
-.co-avatar { width: 60px; height: 60px; border-radius: 50%; background: #eee; border: 3px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.1); z-index: 2; display: flex; justify-content: center; align-items: center; }
-.no-char { font-size: 24px; color: #ccc; font-weight: 700; }
-.co-wire { flex: 1; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; }
-.wire-line { position: absolute; top: 50%; left: -10px; right: -10px; height: 40px; border-top: 2px dashed rgba(0,0,0,0.15); border-radius: 50%; transform: translateY(-50%); z-index: 1; }
-.co-status { width: 36px; height: 36px; border-radius: 50%; background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; color: #ff5252; font-size: 14px; z-index: 2; transition: all 0.3s; }
-.co-status.pulse { animation: beat 1.5s infinite alternate; background: #ff5252; color: #fff; }
-@keyframes beat { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255,82,82,0.4); } 100% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255,82,82,0); } }
+/* 悬浮透明的羁绊卡片 V2 */
+.colisten-card-v2 { border-radius: 24px; display: flex; justify-content: space-around; align-items: center; padding: 0 15px; position: relative; overflow: visible; background: transparent; }
+.co-avatar-v2 { width: 62px; height: 62px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.5); box-shadow: 0 8px 20px rgba(0,0,0,0.15), inset 0 0 10px rgba(255,255,255,0.2); z-index: 2; display: flex; justify-content: center; align-items: center; background-size: cover; background-position: center; transition: transform 0.2s; }
+.colisten-card-v2:active .co-avatar-v2 { transform: scale(0.95); }
+.no-char i { font-size: 20px; color: rgba(255, 255, 255, 0.7); text-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+.co-wire-v2 { flex: 1; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; margin: 0 10px; }
+.wire-line-v2 { position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: rgba(255, 255, 255, 0.3); transform: translateY(-50%); z-index: 1; box-shadow: 0 0 5px rgba(255, 255, 255, 0.2); }
+.wire-line-v2.wire-active { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent); background-size: 200% 100%; animation: flow 2s linear infinite; box-shadow: 0 0 8px rgba(255, 255, 255, 0.5); }
+@keyframes flow { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+.co-status-v2 { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); backdrop-filter: blur(5px); border: 1px solid rgba(255, 255, 255, 0.5); box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; color: #fff; font-size: 13px; z-index: 2; transition: all 0.3s; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.co-status-v2.pulse { background: rgba(255, 255, 255, 0.95); color: #ff5252; border-color: #fff; text-shadow: none; animation: beat-v2 1.5s infinite alternate; box-shadow: 0 0 15px rgba(255, 82, 82, 0.4); }
+@keyframes beat-v2 { 0% { transform: scale(0.95); } 100% { transform: scale(1.1); } }
 
 .quick-chat { border-radius: 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; background: rgba(255,255,255,0.6); position: relative; overflow: hidden; }
 .qc-avatar { width: 56px; height: 56px; border-radius: 20px; background: #eee; box-shadow: 0 5px 15px rgba(0,0,0,0.1); z-index: 2; background-size: cover; background-position: center; }
