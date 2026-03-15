@@ -2,6 +2,7 @@
   <transition name="slide-up">
     <div v-if="show" class="dating-chat-page">
       
+      <!-- 极简模式 Header -->
       <div class="dating-chat-header">
         <i class="fas fa-chevron-left" @click="$emit('close')" style="font-size: 18px; padding: 10px; cursor: pointer;"></i>
         
@@ -21,18 +22,21 @@
         </div>
       </div>
 
+      <!-- 聊天区域复用 QQ 气泡 -->
       <div class="chat-area" ref="chatBox">
         <div class="system-intro" v-if="chatData?.status !== 'revealed'">
           你和 TA 相遇了。<br>对方的人设完全保密，试着去了解 TA 吧。
         </div>
 
         <template v-for="msg in messages" :key="msg.id">
+          <!-- 拦截内嵌的好友申请消息，渲染成特殊卡片 -->
           <div v-if="msg.type === 'reveal_request'" class="reveal-request-card">
              <div class="icon"><i class="fas fa-heartbeat"></i></div>
              <div class="text">{{ msg.content }}</div>
              <button class="btn-handle" @click="showRevealModal = true">点击处理</button>
           </div>
           
+          <!-- 核心修复：接上重试与转账的事件监听 -->
           <ChatMessageItem 
             v-else
             :msg="msg"
@@ -43,6 +47,8 @@
             @press="startPress"
             @clear-press="clearPress"
             @toggle-voice="(m) => { m.showText = !m.showText }"
+            @retry-msg="handleRetry"
+            @transfer-action="handleTransferAction"
           />
         </template>
 
@@ -56,6 +62,7 @@
         </div>
       </div>
 
+      <!-- 底部输入框 -->
       <ChatBottomBar 
         v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
@@ -72,9 +79,11 @@
         @open-summary="showSummaryPanel = true"
       />
 
+      <!-- 长按菜单与通用弹窗 -->
       <ChatActionSheet v-model:show="actionSheet.show" :msg="actionSheet.msg" @quote="handleQuote" @edit="handleEditOwnMsg" @recall="handleRecallOwn" />
       <ChatGeneralAlerts v-model:apiErrorDetails="apiErrorDetails" v-model:pendingAutoSummary="pendingAutoSummary" :alert="alert" :chatTitle="pseudoChatObj.title" @close-alert="alert.show = false" @confirm-general="handleAlertConfirm" />
 
+      <!-- 核心修复：拥有丰富信息的简单档案卡片 -->
       <div class="simple-profile-mask" v-if="showSimpleProfile" @click.self="showSimpleProfile = false">
         <div class="simple-profile-box">
           <div class="sp-avatar">?</div>
@@ -83,11 +92,19 @@
           <div class="sp-tags">
             <span v-for="(t, i) in chatProfile?.fullJson?.tag || []" :key="i">{{ t }}</span>
           </div>
-          <div class="sp-bio">"{{ chatProfile?.bio || '这家伙很神秘，什么都没写' }}"</div>
+          
+          <!-- 读取扩写后的人设外在表现与外貌 -->
+          <div class="sp-bio">
+            <span class="sp-bio-title">社交宣言 / 面具</span>
+            <div class="sp-bio-text">"{{ chatProfile?.fullJson?.personality?.public_persona || '这家伙很神秘，什么都没写' }}"</div>
+            
+            <span class="sp-bio-title">外貌印象</span>
+            <div class="sp-bio-text" style="font-style: normal; margin-bottom: 0;">{{ chatProfile?.fullJson?.appearance || '未知' }}</div>
+          </div>
         </div>
       </div>
 
-      <!-- 核心新增：美化的权限拦截弹窗 -->
+      <!-- 权限拦截弹窗 -->
       <div class="restricted-modal-mask" v-if="restrictedAlert.show" @click.self="restrictedAlert.show = false">
         <div class="restricted-box">
           <div class="r-icon" :class="restrictedAlert.type"><i :class="restrictedAlert.icon"></i></div>
@@ -97,6 +114,7 @@
         </div>
       </div>
 
+      <!-- 揭晓确认弹窗 -->
       <div class="reveal-modal" v-if="showRevealModal">
         <div class="reveal-box">
           <div class="reveal-icon"><i class="fas fa-heartbeat"></i></div>
@@ -109,6 +127,7 @@
         </div>
       </div>
 
+      <!-- 挂载 QQ 的终端与总结面板 -->
       <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
       <SummaryPanel :show="showSummaryPanel" :chat="pseudoChatObj" @close="showSummaryPanel = false" />
 
@@ -160,7 +179,6 @@ const apiErrorDetails = ref(null)
 const pendingAutoSummary = ref(null)
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
 
-// 权限拦截弹窗状态
 const restrictedAlert = ref({ show: false, title: '', desc: '', icon: '', type: '' })
 
 let pressTimer = null
@@ -208,6 +226,7 @@ const pseudoChatObj = computed(() => {
 
 const scrollToBottom = () => { nextTick(() => { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }) }
 
+// --- 气泡交互逻辑 ---
 const startPress = (msg) => { pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
 const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
 const handleQuote = () => { quotingText.value = actionSheet.value.msg.content }
@@ -225,7 +244,36 @@ const handleRecallOwn = async () => {
   if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
 }
 
-// 核心拦截功能唤起优雅弹窗
+// 核心修复 1: 实现重 Roll 逻辑
+const handleRetry = async (msg) => {
+  // 删除被点击的 AI 消息
+  await db.messages.where({ id: msg.id }).delete()
+  messages.value = messages.value.filter(m => m.id !== msg.id)
+  // 重新触发 AI 生成
+  triggerAiReply()
+}
+
+// 核心修复 2: 实现转账点击逻辑 (领钱 / 退钱)
+const handleTransferAction = async (msg, action) => {
+  if (msg.status !== 'pending') return
+  
+  const newStatus = action === 'accept' ? 'accepted' : 'rejected'
+  await db.messages.where({ id: msg.id }).modify({ status: newStatus })
+  
+  const m = messages.value.find(x => x.id === msg.id)
+  if (m) m.status = newStatus
+  
+  await pushLocalMessage({ 
+    role: 'system', 
+    type: 'text', 
+    content: action === 'accept' ? `你已领取了对方的转账 ￥${msg.amount}` : `你已退回了对方的转账` 
+  })
+  
+  // 领钱或退钱后，让 AI 做个反应
+  triggerAiReply()
+}
+
+// --- 底栏受限拦截 ---
 const handleRestricted = (type) => {
   if (type === 'memory') {
     restrictedAlert.value = {
@@ -438,14 +486,17 @@ const handleAcceptReveal = async () => {
 .reveal-request-card .text { font-size: 13px; color: #333; margin-bottom: 16px; font-weight: 600; line-height: 1.4; }
 .reveal-request-card .btn-handle { background: #14CCCC; color: white; border: none; padding: 8px 24px; border-radius: 20px; font-weight: 600; font-size: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(20, 204, 204, 0.3); }
 
+/* 档案详情卡片优化 */
 .simple-profile-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 500; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-.simple-profile-box { background: #fff; width: 75%; border-radius: 24px; padding: 24px; text-align: center; animation: pop 0.2s; }
+.simple-profile-box { background: #fff; width: 80%; border-radius: 24px; padding: 24px; text-align: center; animation: pop 0.2s; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
 .sp-avatar { width: 64px; height: 64px; border-radius: 50%; background: #f4f5f7; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ccc; }
 .sp-name { font-size: 18px; font-weight: 800; color: #1c1c1e; margin-bottom: 4px; }
 .sp-basic { font-size: 12px; color: #8e8e93; margin-bottom: 16px; }
-.sp-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 16px; }
-.sp-tags span { background: rgba(20, 204, 204, 0.1); color: #14CCCC; font-size: 10px; padding: 4px 10px; border-radius: 6px; font-weight: 600; }
-.sp-bio { font-size: 13px; color: #555; line-height: 1.5; font-style: italic; background: #f9f9f9; padding: 12px; border-radius: 12px; }
+.sp-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 20px; }
+.sp-tags span { background: rgba(20, 204, 204, 0.1); color: #14CCCC; font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; }
+.sp-bio { font-size: 12px; color: #555; line-height: 1.6; background: #f9f9f9; padding: 16px; border-radius: 16px; text-align: left; }
+.sp-bio-title { font-weight: 700; color: #1c1c1e; margin-bottom: 6px; display: block; font-size: 11px; text-transform: uppercase; }
+.sp-bio-text { margin-bottom: 16px; font-style: italic; }
 
 /* 拦截警告 UI */
 .restricted-modal-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 550; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
