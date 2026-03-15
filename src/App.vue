@@ -7,7 +7,7 @@
       <div v-if="sysToast" class="sys-toast glass">{{ sysToast }}</div>
     </transition>
 
-    <!-- 支持动态显示隐藏，不占据 DOM 空间 -->
+    <!-- 已恢复：允许通过 v-show 隐藏/显示内部模拟状态栏 -->
     <div v-show="!appearance.hideStatusBar" class="system-status-bar">
       <div class="status-left"><span class="status-time">{{ time }}</span></div>
       <div class="status-center"><MiniCapsule @expand="activeApp = 'music'" /></div>
@@ -27,8 +27,7 @@
     <!-- 隐藏上传器 -->
     <input type="file" ref="widgetFileInput" accept="image/*" style="display:none;" @change="handleWidgetFileChange" />
 
-    <!-- 动态调整顶部内边距：如果在隐藏状态栏的情况下，自动保留刘海屏避挡空间 -->
-    <div class="workspace-container" @click="handleWorkspaceClick" :style="appearance.hideStatusBar ? { paddingTop: 'calc(env(safe-area-inset-top, 20px) + 10px)' } : {}">
+    <div class="workspace-container" @click="handleWorkspaceClick">
       
       <transition name="fade">
         <div v-if="isEditMode" class="edit-done-btn glass" @click.stop="isEditMode = false">完成</div>
@@ -37,17 +36,16 @@
       <div class="screens-wrapper" :class="{ 'blur-bg': showAddDrawer }">
         <!-- 第一屏 -->
         <div class="screen">
-          <VueDraggable v-model="page1" group="desktop" class="desktop-grid" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
+          <VueDraggable v-model="page1" group="desktop" class="desktop-grid" :style="{ paddingBottom: (appearance.hideDock && !isEditMode) ? '40px' : '120px' }" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
             <div v-for="item in page1" :key="item.id" class="grid-item" :class="[`size-${item.size}`, { 'is-wiggle': isEditMode && !isDragging }]" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @mousedown="handleTouchStart" @mouseup="handleTouchEnd" @contextmenu.prevent>
               
-              <!-- 修复移动端删除按钮不灵敏 -->
               <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @touchstart.stop @mousedown.stop @click.stop="removeDesktopItem(item.id)" @touchend.stop.prevent="removeDesktopItem(item.id)">
                 <i class="fas fa-minus"></i>
               </div>
               
               <div v-if="item.type === 'app'" class="app-item-wrapper" @click.stop="handleAppClick(item)">
                 <div class="app-icon-box glass" :style="getAppBg(item)">
-                  <i v-if="!item.icon && !appearance.icons[item.appId]" :class="getDefaultIcon(item.appId)" :style="item.appId === 'offline' ? 'font-size:24px; color:#9c27b0;' : 'font-size:22px; color:var(--text-main);'"></i>
+                  <i v-if="!item.icon && !appearance.icons[item.appId]" :class="getDefaultIcon(item.appId)" :style="item.appId === 'offline' ? 'font-size:24px; color:#9c27b0;' : (item.appId === 'dating' ? 'font-size:24px; color:#14CCCC;' : 'font-size:22px; color:var(--text-main);')"></i>
                 </div>
                 <div class="app-name-label">{{ item.name }}</div>
               </div>
@@ -55,7 +53,6 @@
               <!-- 赋予组件点击路由能力 -->
               <div v-else-if="item.type === 'widget'" class="widget-wrap" @click.stop="handleWidgetClick(item)">
                 <DesktopWidgets :item="item" />
-                <!-- 修复移动端配置按钮点击穿透和拦截问题 -->
                 <div v-if="isEditMode" class="widget-edit-mask">
                   <div class="edit-btn-glass" @touchstart.stop @mousedown.stop @click.stop="openWidgetConfig(item)" @touchend.stop.prevent="openWidgetConfig(item)">
                     <i class="fas fa-pencil-alt"></i> 配置
@@ -69,7 +66,7 @@
 
         <!-- 第二屏 -->
         <div class="screen">
-          <VueDraggable v-model="page2" group="desktop" class="desktop-grid" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
+          <VueDraggable v-model="page2" group="desktop" class="desktop-grid" :style="{ paddingBottom: (appearance.hideDock && !isEditMode) ? '40px' : '120px' }" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
             <div v-for="item in page2" :key="item.id" class="grid-item" :class="[`size-${item.size}`, { 'is-wiggle': isEditMode && !isDragging }]" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @mousedown="handleTouchStart" @mouseup="handleTouchEnd" @contextmenu.prevent>
               
               <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @touchstart.stop @mousedown.stop @click.stop="removeDesktopItem(item.id)" @touchend.stop.prevent="removeDesktopItem(item.id)">
@@ -78,7 +75,7 @@
               
               <div v-if="item.type === 'app'" class="app-item-wrapper" @click.stop="handleAppClick(item)">
                 <div class="app-icon-box glass" :style="getAppBg(item)">
-                  <i v-if="!item.icon && !appearance.icons[item.appId]" :class="getDefaultIcon(item.appId)" :style="item.appId === 'offline' ? 'font-size:24px; color:#9c27b0;' : 'font-size:22px; color:var(--text-main);'"></i>
+                  <i v-if="!item.icon && !appearance.icons[item.appId]" :class="getDefaultIcon(item.appId)" :style="item.appId === 'offline' ? 'font-size:24px; color:#9c27b0;' : (item.appId === 'dating' ? 'font-size:24px; color:#14CCCC;' : 'font-size:22px; color:var(--text-main);')"></i>
                 </div>
                 <div class="app-name-label">{{ item.name }}</div>
               </div>
@@ -97,22 +94,14 @@
         </div>
       </div>
       
-      <div class="dock-container">
+      <!-- Dock栏：未隐藏或在编辑模式下时显示 -->
+      <div class="dock-container" v-show="!appearance.hideDock || isEditMode">
         <transition name="fade-fast" mode="out-in">
+          <!-- 动态渲染底栏应用 -->
           <div v-if="!isEditMode" class="dock glass">
-            <div class="dock-item" @click="activeApp = 'api'">
-              <div class="app-icon-box dock-icon glass" :style="appearance.icons.api ? { backgroundImage: `url(${appearance.icons.api})` } : {}">
-                <i v-if="!appearance.icons.api" class="fas fa-code" style="font-size:20px; color:var(--text-main);"></i>
-              </div>
-            </div>
-            <div class="dock-item" @click="activeApp = 'appearance'">
-              <div class="app-icon-box dock-icon glass" :style="appearance.icons.appearance ? { backgroundImage: `url(${appearance.icons.appearance})` } : {}">
-                <i v-if="!appearance.icons.appearance" class="fas fa-paint-brush" style="font-size:20px; color:var(--text-main);"></i>
-              </div>
-            </div>
-            <div class="dock-item">
-              <div class="app-icon-box dock-icon glass">
-                <i class="fas fa-th-large" style="font-size:20px; color:var(--text-main);"></i>
+            <div v-for="appId in dockApps" :key="appId" class="dock-item" @click="activeApp = appId">
+              <div class="app-icon-box dock-icon glass" :style="getAppBg(getDockAppItem(appId))">
+                <i v-if="!getDockAppItem(appId).icon && !appearance.icons[appId]" :class="getDefaultIcon(appId)" :style="appId === 'dating' ? 'font-size:20px; color:#14CCCC;' : 'font-size:20px; color:var(--text-main);'"></i>
               </div>
             </div>
           </div>
@@ -215,6 +204,7 @@
       <MusicApp        :show="activeApp === 'music'"        @close="activeApp = null" />
       <OfflineApp      :show="activeApp === 'offline'"      @close="activeApp = null" />
       <MemoryApp       :show="activeApp === 'memory'"       @close="activeApp = null" />
+      <DatingApp       :show="activeApp === 'dating'"       @close="activeApp = null" />
       
     </div>
   </div>
@@ -238,10 +228,11 @@ import MusicApp        from '@/apps/music/MusicApp.vue'
 import MiniCapsule     from '@/apps/music/components/MiniCapsule.vue' 
 import OfflineApp      from '@/apps/offline/OfflineApp.vue'
 import MemoryApp       from '@/apps/memory/MemoryApp.vue'
+import DatingApp       from '@/apps/dating/DatingApp.vue'
 
 const { time } = useTime()
 const { appearance } = useAppearance()
-const { page1, page2, removeDesktopItem, addDesktopItem, updateWidgetProps, widgetLibrary } = useDesktop()
+const { page1, page2, removeDesktopItem, addDesktopItem, updateWidgetProps, widgetLibrary, dockApps } = useDesktop()
 const { chatSessions } = useChatSessions()
 
 const activeApp = ref(null)
@@ -249,6 +240,11 @@ const isEditMode = ref(false)
 const isDragging = ref(false)
 const showAddDrawer = ref(false)
 let pressTimer = null
+
+// 核心方法：抓取对应 App 的个性化图标配置
+const getDockAppItem = (appId) => {
+  return [...page1.value, ...page2.value].find(i => i.type === 'app' && i.appId === appId) || { appId }
+}
 
 // --- 军用级前端图像压缩引擎 (彻底解决 LocalStorage 5MB 爆盘问题) ---
 const compressImage = (base64Str, maxWidth = 600) => {
@@ -375,11 +371,12 @@ const handleWidgetFileChange = (e) => {
 const getAppBg = (item) => {
   let url = item.icon || appearance.value.icons[item.appId]
   if (item.appId === 'offline') return { backgroundColor: 'rgba(156, 39, 176, 0.15)' }
+  if (item.appId === 'dating') return { backgroundColor: 'rgba(20, 204, 204, 0.15)' }
   return url ? { backgroundImage: `url(${url})`, backgroundColor: 'transparent', border: 'none' } : {}
 }
 
 const getDefaultIcon = (appId) => {
-  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt', memory: 'fas fa-book' }
+  const icons = { qq: 'fas fa-comment', worldbook: 'fas fa-book-open', api: 'fas fa-code', appearance: 'fas fa-paint-brush', todo: 'fas fa-check-square', vocab: 'fas fa-language', music: 'fas fa-music', tomato: 'fas fa-clock', storage: 'fas fa-folder', offline: 'fas fa-wine-glass-alt', memory: 'fas fa-book', dating: 'fas fa-fire' }
   return icons[appId] || 'fas fa-cube'
 }
 
@@ -423,9 +420,11 @@ const appBackgroundStyle = computed(() => {
 .screens-wrapper { flex: 1; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; transition: filter 0.3s; }
 .screens-wrapper.blur-bg { filter: blur(5px); transform: scale(0.98); }
 .screens-wrapper::-webkit-scrollbar { display: none; }
-.screen { min-width: 100%; height: 100%; scroll-snap-align: start; }
 
-.desktop-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 76px; gap: 15px 12px; padding: 0px 20px 36px; align-content: start; height: 100%; box-sizing: border-box; }
+.screen { min-width: 100%; height: 100%; scroll-snap-align: start; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.screen::-webkit-scrollbar { display: none; }
+
+.desktop-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 76px; gap: 15px 12px; padding: 0px 20px; align-content: start; min-height: 100%; box-sizing: border-box; transition: padding-bottom 0.3s; }
 .size-1x1 { grid-column: span 1; grid-row: span 1; }
 .size-2x1 { grid-column: span 2; grid-row: span 1; }
 .size-2x2 { grid-column: span 2; grid-row: span 2; }
@@ -440,7 +439,6 @@ const appBackgroundStyle = computed(() => {
 @keyframes wiggle { 0% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } 100% { transform: rotate(-1.5deg); } }
 .is-wiggle { animation: wiggle 0.3s infinite ease-in-out alternate; transform-origin: center center; }
 
-/* 减号按钮也加了 pointer-events: auto 保障点击 */
 .remove-badge { position: absolute; top: -6px; left: -6px; width: 22px; height: 22px; background: rgba(255, 59, 48, 0.95); color: #fff; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 12px; z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer; pointer-events: auto; border: 1.5px solid #fff; }
 .edit-done-btn { position: absolute; top: 10px; right: 20px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--text-main); z-index: 50; cursor: pointer; border-radius: 20px; }
 .ghost-item { opacity: 0.3; transform: scale(0.95); }
@@ -448,7 +446,6 @@ const appBackgroundStyle = computed(() => {
 .widget-wrap { position: relative; width: 100%; height: 100%; cursor: pointer; }
 .widget-wrap:active { transform: scale(0.98); transition: 0.2s; }
 
-/* 核心修改：让暗色遮罩穿透拖拽，只拦截按钮本体 */
 .widget-edit-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.15); border-radius: inherit; display: flex; justify-content: center; align-items: center; z-index: 10; border-radius: 24px; pointer-events: none; }
 .edit-btn-glass { background: rgba(255,255,255,0.95); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.1); pointer-events: auto; cursor: pointer; }
 

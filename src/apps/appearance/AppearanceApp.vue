@@ -9,7 +9,7 @@
 
       <div class="editor-tabs" style="margin-top:0; padding-top:10px; background:#fff; overflow-x:auto;">
         <div :class="['editor-tab', { active: activeTab === 'ui' }]" style="white-space:nowrap;" @click="activeTab = 'ui'">壁纸</div>
-        <div :class="['editor-tab', { active: activeTab === 'icons' }]" style="white-space:nowrap;" @click="activeTab = 'icons'">应用改名</div>
+        <div :class="['editor-tab', { active: activeTab === 'icons' }]" style="white-space:nowrap;" @click="activeTab = 'icons'">应用与Dock</div>
         <div :class="['editor-tab', { active: activeTab === 'widgets' }]" style="white-space:nowrap;" @click="activeTab = 'widgets'">组件工坊</div>
         <div :class="['editor-tab', { active: activeTab === 'css' }]" style="white-space:nowrap;" @click="activeTab = 'css'">全局CSS</div>
       </div>
@@ -29,18 +29,27 @@
           </div>
         </div>
 
-        <!-- 新增：界面组件可见性配置 -->
         <div class="appearance-section" style="margin-top: 15px;">
           <div class="appearance-title">界面布局</div>
+          
           <div class="appearance-item">
-            <div class="appearance-label">显示 App 模拟顶栏</div>
+            <div class="appearance-label">显示顶部状态栏</div>
             <div class="appearance-actions">
               <div class="appearance-btn" :style="!appearance.hideStatusBar ? 'background: #5c8aff; color: #fff; border-color: #5c8aff;' : ''" @click="appearance.hideStatusBar = !appearance.hideStatusBar">
                 {{ appearance.hideStatusBar ? '已隐藏' : '已显示' }}
               </div>
             </div>
           </div>
-          <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.4;">注：隐藏后将不显示系统时间、电量及音乐灵动岛，获得更纯粹的全屏体验。真正的手机系统状态栏需重新配置 PWA 并重装生效。</div>
+
+          <div class="appearance-item" style="margin-top: 10px;">
+            <div class="appearance-label">显示底部 Dock 栏</div>
+            <div class="appearance-actions">
+              <div class="appearance-btn" :style="!appearance.hideDock ? 'background: #5c8aff; color: #fff; border-color: #5c8aff;' : ''" @click="appearance.hideDock = !appearance.hideDock">
+                {{ appearance.hideDock ? '已隐藏' : '已显示' }}
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.4;">注：隐藏 Dock 栏后主屏幕可显示更多内容。长按进入编辑模式时，Dock 栏仍会自动浮现以便添加小组件。</div>
         </div>
 
         <div style="font-size:12px; color:#888; text-align:center; padding:20px 0;">
@@ -51,7 +60,7 @@
       <div class="content-area" v-if="activeTab === 'icons'">
         <div class="appearance-section">
           <div class="appearance-title">主屏应用深度定制</div>
-          <div style="font-size:11px; color:#888; margin-bottom:12px; line-height:1.5;">在此修改桌面图标及应用下方显示的名称。长按桌面图标进入编辑模式可以自由排版！</div>
+          <div style="font-size:11px; color:#888; margin-bottom:12px; line-height:1.5;">在此修改桌面图标名称并决定是否将其常驻在底部的 Dock 栏中。</div>
           <div class="appearance-item" v-for="app in desktopApps" :key="app.id" style="flex-direction:column; align-items:flex-start; gap:10px;">
             <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
               <div style="display:flex; align-items:center; gap:8px; flex:1;">
@@ -59,6 +68,9 @@
                 <input type="text" v-model="app.name" @input="updateAppInfo(app.id, app.name, undefined)" style="border:1px solid #eee; padding:6px 10px; border-radius:8px; font-size:12px; outline:none; flex:1;"/>
               </div>
               <div class="appearance-actions" style="margin-left:10px;">
+                <div class="appearance-btn" :style="dockApps.includes(app.appId) ? 'background:#5c8aff; color:#fff; border:none;' : ''" @click="toggleDockApp(app.appId)">
+                  {{ dockApps.includes(app.appId) ? '- Dock' : '+ Dock' }}
+                </div>
                 <div class="appearance-btn" @click="triggerAppFileUpload(app.id)">上传</div>
                 <div class="appearance-btn" @click="clearAppImage(app.id)">清除</div>
               </div>
@@ -185,7 +197,7 @@ defineProps({ show: Boolean })
 defineEmits(['close'])
 
 const { appearance, cssPresets, saveCssPreset, exportCssPresets } = useAppearance()
-const { getDesktopApps, updateAppInfo, customWidgetLibrary, addCustomWidget, removeCustomWidget, exportCustomWidgets, importCustomWidgets } = useDesktop()
+const { getDesktopApps, updateAppInfo, customWidgetLibrary, addCustomWidget, removeCustomWidget, exportCustomWidgets, importCustomWidgets, dockApps } = useDesktop()
 
 const desktopApps = computed(() => getDesktopApps())
 
@@ -193,6 +205,19 @@ const activeTab = ref('ui')
 const fileInput = ref(null)
 let currentUploadTarget = ''
 let isAppUpload = false 
+
+const toggleDockApp = (appId) => {
+  const idx = dockApps.value.indexOf(appId)
+  if (idx > -1) {
+    dockApps.value.splice(idx, 1)
+  } else {
+    if (dockApps.value.length >= 4) {
+      alert('Dock栏最多支持放置 4 个应用哦')
+      return
+    }
+    dockApps.value.push(appId)
+  }
+}
 
 // 图像极限压缩引擎
 const compressImage = (base64Str, maxWidth = 800) => {

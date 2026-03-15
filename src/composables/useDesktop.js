@@ -19,7 +19,8 @@ const DEFAULT_PAGE1 = [
 const DEFAULT_PAGE2 = [
   { id: 'app_storage', type: 'app', appId: 'storage', name: '存储', icon: '', size: '1x1' },
   { id: 'app_offline', type: 'app', appId: 'offline', name: '线下见面', icon: '', size: '1x1' },
-  { id: 'app_memory', type: 'app', appId: 'memory', name: '那年今日', icon: '', size: '1x1' }
+  { id: 'app_memory', type: 'app', appId: 'memory', name: '那年今日', icon: '', size: '1x1' },
+  { id: 'app_dating', type: 'app', appId: 'dating', name: '冷推', icon: '', size: '1x1' }
 ]
 
 const DEFAULT_WIDGET_LIBRARY = [
@@ -35,6 +36,9 @@ const DEFAULT_WIDGET_LIBRARY = [
   { name: '财务状态看板', component: 'finance', size: '2x1', type: 'widget', props: {} }
 ]
 
+// 核心修改：定义默认的底栏配置
+const DEFAULT_DOCK = ['qq', 'music', 'api', 'appearance']
+
 const load = (key, def) => {
   const s = localStorage.getItem(key)
   return s ? JSON.parse(s) : def
@@ -46,15 +50,26 @@ export function useDesktop() {
   
   const customWidgetLibrary = ref(load('customWidgetLibrary', []))
 
+  // 核心修改：加入响应式的 dockApps 状态
+  const dockApps = ref(load('desktop_dock', DEFAULT_DOCK))
+
   const ensureMemoryApp = () => {
     const has = [...page1.value, ...page2.value].some(i => i.type === 'app' && i.appId === 'memory')
     if (!has) page2.value.push({ id: 'app_memory', type: 'app', appId: 'memory', name: '那年今日', icon: '', size: '1x1' })
   }
+  
+  const ensureDatingApp = () => {
+    const has = [...page1.value, ...page2.value].some(i => i.type === 'app' && i.appId === 'dating')
+    if (!has) page2.value.push({ id: 'app_dating', type: 'app', appId: 'dating', name: '冷推', icon: '', size: '1x1' })
+  }
+
   ensureMemoryApp()
+  ensureDatingApp()
 
   watch(page1, (v) => localStorage.setItem('desktop_page1', JSON.stringify(v)), { deep: true })
   watch(page2, (v) => localStorage.setItem('desktop_page2', JSON.stringify(v)), { deep: true })
   watch(customWidgetLibrary, (v) => localStorage.setItem('customWidgetLibrary', JSON.stringify(v)), { deep: true })
+  watch(dockApps, (v) => localStorage.setItem('desktop_dock', JSON.stringify(v)), { deep: true })
 
   const widgetLibrary = computed(() => {
     return [...DEFAULT_WIDGET_LIBRARY, ...customWidgetLibrary.value]
@@ -147,7 +162,7 @@ export function useDesktop() {
   }
 
   return { 
-    page1, page2, widgetLibrary, customWidgetLibrary,
+    page1, page2, widgetLibrary, customWidgetLibrary, dockApps,
     getDesktopApps, updateAppInfo, updateWidgetProps, removeDesktopItem, addDesktopItem,
     addCustomWidget, removeCustomWidget, exportCustomWidgets, importCustomWidgets
   }
