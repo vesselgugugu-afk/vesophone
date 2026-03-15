@@ -65,14 +65,16 @@
         <input class="modal-input" v-model="draft.name" placeholder="预设名称" />
         
         <div v-if="activeTab === 'diary'" style="margin-top:10px;">
-          <div class="modal-hint">排版布局 (Layout)</div>
+          <div class="modal-hint">排版布局引擎 (Layout)</div>
           <select class="custom-select" style="width:100%;" v-model="draft.layout">
             <option value="default">基础纯净版式</option>
-            <option value="wechat">微信读书</option>
-            <option value="calendar">锐利日历</option>
-            <option value="letter">信笺</option>
-            <option value="magazine">杂志风</option>
-            <option value="pixel">像素游戏</option>
+            <option value="wechat">微信读书风</option>
+            <option value="calendar">锐利日历风</option>
+            <option value="letter">古典信笺风</option>
+            <option value="magazine">杂志排版风</option>
+            <option value="pixel">像素游戏风</option>
+            <option value="journal">活页手账风</option>
+            <option value="profile">口袋名片风</option>
           </select>
         </div>
 
@@ -88,41 +90,75 @@
             <div style="font-size:12px;">核心卡片内容</div>
           </div>
           
-          <div v-else-if="activeTab === 'diary'" style="transform: scale(0.6); transform-origin: top center;">
+          <div v-else-if="activeTab === 'diary'" style="transform: scale(0.6); transform-origin: top center; pointer-events:none;">
             <div v-if="draft.layout === 'wechat'" class="wx-page">
-              <div class="wx-header"><div class="wx-user-name">User Name</div></div>
+              <div class="wx-header"><div class="wx-avatar" style="background:#eee;"></div><div class="wx-user-name">User</div><div class="wx-date">摘录于 2026.03.15</div></div>
               <div class="wx-divider"></div>
-              <div class="wx-content">微信读书式样的排版文本预览...</div>
+              <div class="wx-content">排版预览正文...</div>
+              <div class="wx-footer"><div class="wx-source"><span class="wx-slash">/</span>起居注标题</div><div class="wx-char-name">Char <span class="wx-tag">#daily</span></div></div>
             </div>
+
             <div v-else-if="draft.layout === 'calendar'" class="cal-square">
-              <div class="cal-time"><div class="cal-date-num">15</div></div>
+              <div class="cal-time"><div class="cal-date-num">15</div><div class="cal-month">March 2026</div><div class="cal-tag">#daily</div></div>
               <div class="cal-divider"><div class="cal-dot"></div><div class="cal-line"></div></div>
-              <div class="cal-content">日历内容的排版预览...</div>
+              <div class="cal-content">排版预览正文...</div>
+              <div class="cal-footer"><div class="cal-title">起居注标题</div><div class="cal-char-name">Char</div></div>
             </div>
+
             <div v-else-if="draft.layout === 'letter'" class="letter-paper">
-              <div class="letter-grid"><div class="letter-text"><div class="letter-body">信件内容的排版预览...</div></div></div>
+              <div class="letter-grid">
+                <div class="letter-text">
+                  <div class="letter-salutation">Dear {{ previewLetterUserName }}：</div>
+                  <div class="letter-body">
+                    <p v-for="(p, idx) in previewLetterParagraphs" :key="idx">{{ p }}</p>
+                  </div>
+                  <div class="letter-sign"><div class="letter-sig-name">{{ previewLetterCharName }}</div><div class="letter-sig-date">{{ previewLetterDateText }}</div></div>
+                </div>
+              </div>
             </div>
+
             <div v-else-if="draft.layout === 'magazine'" class="mag-card">
-              <div class="mag-cover" style="background:#ddd; height:60px;"></div>
-              <div class="mag-content"><div class="mag-text">Magazine Text Preview...</div></div>
+              <div class="mag-cover" style="background:#ddd; height:60px;"><div class="mag-top-bar"><span class="mag-tag">#daily</span><span class="mag-date">MAR 15, 2026</span></div></div>
+              <div class="mag-content">
+                <div class="mag-text"><span class="mag-dropcap">排</span><span>版预览正文...</span></div>
+                <div class="mag-divider"></div>
+                <div class="mag-footer"><span class="mag-author">Char</span><span class="mag-title">起居注标题</span></div>
+              </div>
             </div>
+
             <div v-else-if="draft.layout === 'pixel'" class="pix-panel">
               <div class="pix-inner">
                 <div class="pix-header">
-                  <div class="pix-header-main">
-                    <div class="pix-avatar"><svg viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg></div>
-                    <div class="pix-title">Item Name</div>
-                  </div>
+                  <div class="pix-header-main"><div class="pix-avatar"><svg viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg></div><div class="pix-title">起居注标题</div></div>
                   <div class="pix-btn-close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></div>
                 </div>
                 <div class="pix-divider"></div>
-                <div class="pix-body">Pixel text content here...</div>
-                <div class="pix-footer"><div class="pix-action">交互</div></div>
+                <div class="pix-body">排版预览正文...</div>
+                <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
               </div>
             </div>
+
+            <div v-else-if="draft.layout === 'journal'" class="journal-paper">
+              <div class="journal-header"><div class="journal-title">起居注标题</div><div class="journal-date">date 2026.03.15</div></div>
+              <div class="journal-body">排版预览正文...</div>
+            </div>
+
+            <div v-else-if="draft.layout === 'profile'" class="profile-card">
+              <div class="card-banner"><svg class="banner-icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></div>
+              <div class="profile-avatar-container"><div class="profile-avatar-inner" style="background:#eee;"></div></div>
+              <div class="profile-info"><div class="profile-name">Char</div><div class="profile-bio">起居注标题</div></div>
+              <div class="profile-stats"><div class="stat-item"><span class="stat-number">128</span><span class="stat-label">Posts</span></div><div class="stat-divider"></div><div class="stat-item"><span class="stat-number">4.2k</span><span class="stat-label">Followers</span></div></div>
+              <div class="profile-action"><button class="btn-follow"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Follow</button></div>
+              <div class="profile-divider"><div></div></div>
+              <div class="profile-body">排版预览正文...</div>
+              <div class="profile-footer"><div class="profile-tags"><span class="profile-tag-item">#daily</span></div><div>2026.03.15</div></div>
+            </div>
+
             <div v-else class="dd-card">
-              <div class="dd-title">Default</div>
-              <div class="dd-content">Text</div>
+              <div class="dd-header"><div class="dd-avatar" style="background:#eee;"></div><div class="dd-name">Char</div><div class="dd-date">2026.03.15</div></div>
+              <div class="dd-title">起居注标题</div>
+              <div class="dd-content">排版预览正文...</div>
+              <div class="dd-footer"><span style="font-weight:bold; background:#f4f5f7; padding:2px 6px; border-radius:4px;">#daily</span></div>
             </div>
           </div>
         </div>
@@ -135,10 +171,10 @@
 
       <InnerModal :show="showImport" @close="showImport = false">
         <div class="modal-title">导入样式预设</div>
-        <textarea class="modal-textarea code-editor" style="height: 150px;" v-model="importText" placeholder="粘贴 JSON 数据"></textarea>
+        <textarea class="modal-textarea code-editor" style="height: 150px;" v-model="importText" placeholder="粘贴 JSON 格式的预设数据"></textarea>
         <div class="modal-actions" style="margin-top: 20px;">
           <button class="btn-cancel" @click="showImport = false">取消</button>
-          <button class="btn-confirm" @click="handleImport">导入</button>
+          <button class="btn-confirm" @click="handleImport">确认导入</button>
         </div>
       </InnerModal>
 
@@ -147,7 +183,7 @@
         <textarea class="modal-textarea code-editor" style="height: 150px;" :value="exportText" readonly></textarea>
         <div class="modal-actions" style="margin-top: 20px;">
           <button class="btn-cancel" @click="showExport = false">关闭</button>
-          <button class="btn-confirm" @click="copyExport">复制</button>
+          <button class="btn-confirm" @click="copyExport">复制到剪贴板</button>
         </div>
       </InnerModal>
 
@@ -156,7 +192,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import InnerModal from '@/components/InnerModal.vue'
 import { useMemoryCardStyles } from '@/composables/useMemoryCardStyles'
 import { useDiaryCardStyles } from '@/composables/useDiaryCardStyles'
@@ -188,6 +224,61 @@ watch(() => props.show, (v) => { if (v) globalCssDraft.value = getGlobalCss() })
 
 const exportText = computed(() => {
   return activeTab.value === 'core' ? coreStyles.exportPresets() : diaryStyles.exportPresets()
+})
+
+const openccConverter = ref(null)
+
+const loadOpenCC = () => {
+  return new Promise((resolve) => {
+    if (window.OpenCC) {
+      openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+      resolve()
+      return
+    }
+    const existing = document.getElementById('opencc-js')
+    if (existing) {
+      existing.addEventListener('load', () => {
+        if (window.OpenCC) openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+        resolve()
+      })
+      existing.addEventListener('error', resolve)
+      return
+    }
+    const s = document.createElement('script')
+    s.id = 'opencc-js'
+    s.src = 'https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js'
+    s.onload = () => {
+      if (window.OpenCC) openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+      resolve()
+    }
+    s.onerror = resolve
+    document.head.appendChild(s)
+  })
+}
+
+const convertText = (text) => {
+  const t = text || ''
+  if (!openccConverter.value) return t
+  try {
+    return openccConverter.value(t)
+  } catch (e) {
+    return t
+  }
+}
+
+const splitToParagraphs = (text) => {
+  const t = text || ''
+  return t.split(/\n+/).map(s => s.trim()).filter(Boolean)
+}
+
+const previewLetterUserName = computed(() => convertText('远方的旅人'))
+const previewLetterCharName = computed(() => convertText('建构师 Vessel'))
+const previewLetterDateText = computed(() => convertText('二零二六年 晚秋'))
+const previewLetterContent = computed(() => convertText('见字如面。你一定察觉到了，这张信纸上的线条变得更加细密。当我试图将更多的思绪挤进这有限的纸面时，字距与行距的压缩，反而带来了一种不可言说的紧迫与私密感。\n我重新调整了每一次落笔的重心，让缩小后的字符依然能够死死地咬住那条褪色的红线。在这个一切都可以被轻易划过、被瞬间遗忘的世界里，这种不留缝隙的紧密排列，就像是一种固执的抵抗。\n不需要太多的留白来稀释情感。愿你在阅读这密密麻麻的墨迹时，能听见指尖摩挲过纸面时那些细碎的回音。'))
+const previewLetterParagraphs = computed(() => splitToParagraphs(previewLetterContent.value))
+
+onMounted(async () => {
+  await loadOpenCC()
 })
 
 const openCreate = () => {

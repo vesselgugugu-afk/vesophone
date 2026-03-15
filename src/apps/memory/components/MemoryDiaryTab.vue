@@ -1,42 +1,26 @@
 <template>
+  <!-- 绝杀第一步：移除了该父容器的所有 relative 和 z-index 封印 -->
   <div class="diary-tab">
-    <div class="dropdown-mask" v-if="activeDropdown" @click="activeDropdown = null"></div>
 
     <div class="diary-filters">
-      <div class="dropdown-wrapper">
-        <div class="filter-pill" :class="{ 'is-active': filterLevel !== 'all' || activeDropdown === 'level' }" @click="toggleDropdown('level')">
-          {{ levelLabel }} <i class="fas fa-angle-down"></i>
-        </div>
-        <div class="dropdown-menu" v-if="activeDropdown === 'level'">
-          <div class="dropdown-item" :class="{ active: filterLevel === 'all' }" @click="selectFilter('level', 'all')">全部级别</div>
-          <div class="dropdown-item" :class="{ active: filterLevel === '1' }" @click="selectFilter('level', '1')">L1 原始记录</div>
-          <div class="dropdown-item" :class="{ active: filterLevel === '2' }" @click="selectFilter('level', '2')">L2 阶段总结</div>
-          <div class="dropdown-item" :class="{ active: filterLevel === '3' }" @click="selectFilter('level', '3')">L3 长期回忆</div>
-        </div>
-      </div>
+      <!-- 绝杀第二步：全面抛弃自定义复杂下拉，回归原生 select 以绝后患 -->
+      <select class="native-select" v-model="filterLevel">
+        <option value="all">全部级别</option>
+        <option value="1">L1 原始记录</option>
+        <option value="2">L2 阶段总结</option>
+        <option value="3">L3 长期回忆</option>
+      </select>
 
-      <div class="dropdown-wrapper">
-        <div class="filter-pill" :class="{ 'is-active': filterArchived !== 'all' || activeDropdown === 'archived' }" @click="toggleDropdown('archived')">
-          {{ archivedLabel }} <i class="fas fa-angle-down"></i>
-        </div>
-        <div class="dropdown-menu" v-if="activeDropdown === 'archived'">
-          <div class="dropdown-item" :class="{ active: filterArchived === 'all' }" @click="selectFilter('archived', 'all')">全部状态</div>
-          <div class="dropdown-item" :class="{ active: filterArchived === 'active' }" @click="selectFilter('archived', 'active')">未归档</div>
-          <div class="dropdown-item" :class="{ active: filterArchived === 'archived' }" @click="selectFilter('archived', 'archived')">已归档</div>
-        </div>
-      </div>
+      <select class="native-select" v-model="filterArchived">
+        <option value="all">全部状态</option>
+        <option value="active">未归档</option>
+        <option value="archived">已归档</option>
+      </select>
 
-      <div class="dropdown-wrapper" v-if="monthOptions.length > 0">
-        <div class="filter-pill" :class="{ 'is-active': filterMonth !== 'all' || activeDropdown === 'month' }" @click="toggleDropdown('month')">
-          {{ monthLabel }} <i class="fas fa-angle-down"></i>
-        </div>
-        <div class="dropdown-menu" v-if="activeDropdown === 'month'">
-          <div class="dropdown-item" :class="{ active: filterMonth === 'all' }" @click="selectFilter('month', 'all')">全部时间</div>
-          <div class="dropdown-item" :class="{ active: filterMonth === m }" v-for="m in monthOptions" :key="m" @click="selectFilter('month', m)">
-            {{ m }}
-          </div>
-        </div>
-      </div>
+      <select class="native-select" v-model="filterMonth" v-if="monthOptions.length > 0">
+        <option value="all">全部时间</option>
+        <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
+      </select>
 
       <button class="btn-ghost" @click="toggleOrganize">{{ organizeMode ? '取消整理' : '整理记忆' }}</button>
     </div>
@@ -98,8 +82,8 @@
       生成回忆 (已选 {{ selectedIds.length }} 篇)
     </button>
 
-    <!-- 增强版编辑弹窗 (利用深层 CSS 穿透强制置顶，解决被遮挡问题) -->
-    <InnerModal :show="showEdit" @close="showEdit = false" class="forced-top-modal">
+    <!-- 增强版编辑弹窗 -->
+    <InnerModal :show="showEdit" @close="showEdit = false">
       <div class="modal-title">编辑起居注排版</div>
       
       <input class="modal-input" v-model="draft.title" placeholder="标题 / 物品名称" />
@@ -178,11 +162,13 @@
           <div v-else-if="previewLayout === 'letter'" class="letter-paper">
             <div class="letter-grid">
               <div class="letter-text">
-                <div class="letter-salutation">Dear {{ charName }}：</div>
-                <div class="letter-body">{{ draft.content || '正文预览...' }}</div>
+                <div class="letter-salutation">Dear {{ letterUserName }}：</div>
+                <div class="letter-body">
+                  <p v-for="(p, idx) in previewLetterParagraphs" :key="idx">{{ p }}</p>
+                </div>
                 <div class="letter-sign">
-                  <div class="letter-sig-name">{{ userName }}</div>
-                  <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
+                  <div class="letter-sig-name">{{ letterCharName }}</div>
+                  <div class="letter-sig-date">{{ letterDateText }}</div>
                 </div>
               </div>
             </div>
@@ -196,7 +182,10 @@
               </div>
             </div>
             <div class="mag-content">
-              <div class="mag-text">{{ draft.content || '正文预览...' }}</div>
+              <div class="mag-text">
+                <span class="mag-dropcap" v-if="previewMagParts.first">{{ previewMagParts.first }}</span>
+                <span>{{ previewMagParts.rest }}</span>
+              </div>
               <div class="mag-divider"></div>
               <div class="mag-footer">
                 <span class="mag-author">{{ charName }}</span>
@@ -209,9 +198,8 @@
             <div class="pix-inner">
               <div class="pix-header">
                 <div class="pix-header-main">
-                  <div class="pix-avatar">
-                    <div v-if="draft.imageMediaId || draft.imageUrl" :style="getDiaryImageStyle(draft)" class="pix-avatar-img"></div>
-                    <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
+                  <div class="pix-avatar" :style="getDiaryImageStyle(draft)">
+                    <svg v-if="!draft.imageMediaId && !draft.imageUrl" viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
                   </div>
                   <div class="pix-title">{{ draft.title || '新手の物件' }}</div>
                 </div>
@@ -221,6 +209,22 @@
               <div class="pix-body">{{ draft.content || '正文预览...' }}</div>
               <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
             </div>
+          </div>
+
+          <div v-else-if="previewLayout === 'journal'" class="journal-paper">
+            <div class="journal-header"><div class="journal-title">{{ draft.title || '起居注标题' }}</div><div class="journal-date">date {{ activeDateStr }}</div></div>
+            <div class="journal-body">{{ draft.content || '正文预览...' }}</div>
+          </div>
+
+          <div v-else-if="previewLayout === 'profile'" class="profile-card">
+            <div class="card-banner"><svg class="banner-icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></div>
+            <div class="profile-avatar-container"><div class="profile-avatar-inner" :style="charAvatarStyle"></div></div>
+            <div class="profile-info"><div class="profile-name">{{ charName }}</div><div class="profile-bio">{{ draft.title || '标题作为名片签名' }}</div></div>
+            <div class="profile-stats"><div class="stat-item"><span class="stat-number">128</span><span class="stat-label">Posts</span></div><div class="stat-divider"></div><div class="stat-item"><span class="stat-number">4.2k</span><span class="stat-label">Followers</span></div></div>
+            <div class="profile-action"><button class="btn-follow"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Follow</button></div>
+            <div class="profile-divider"><div></div></div>
+            <div class="profile-body">{{ draft.content || '正文预览...' }}</div>
+            <div class="profile-footer"><div class="profile-tags"><span class="profile-tag-item">#{{ draft.type || 'daily' }}</span></div><div>{{ activeDateStr }}</div></div>
           </div>
 
           <div v-else class="dd-card">
@@ -237,6 +241,7 @@
               <span>{{ formatTime(draft.timestamp || draft.date) }}</span>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -246,11 +251,12 @@
       </div>
     </InnerModal>
 
-    <!-- 沉浸式引擎渲染 Modal -->
+    <!-- 沉浸式引擎渲染 Modal (展示与高清长图克隆保存用) -->
     <div class="viewer-overlay" :class="{ show: showViewerModal }" @click.self="closeViewer">
       <div class="close-modal" @click="closeViewer"><i class="fas fa-times"></i></div>
       
-      <div class="render-target-wrap" v-if="activeDiary">
+      <div class="render-target-wrap" v-if="activeDiary" id="renderWrap">
+        
         <component :is="'style'">{{ activeViewerCss }}</component>
         
         <div id="diaryRenderNode" class="render-engine-box">
@@ -286,11 +292,13 @@
           <div v-else-if="activeLayout === 'letter'" class="letter-paper">
             <div class="letter-grid">
               <div class="letter-text">
-                <div class="letter-salutation">Dear {{ charName }}：</div>
-                <div class="letter-body">{{ activeDiary.content }}</div>
+                <div class="letter-salutation">Dear {{ letterUserName }}：</div>
+                <div class="letter-body">
+                  <p v-for="(p, idx) in viewerLetterParagraphs" :key="idx">{{ p }}</p>
+                </div>
                 <div class="letter-sign">
-                  <div class="letter-sig-name">{{ userName }}</div>
-                  <div class="letter-sig-date">{{ activeYear }}年 {{ activeMonthCn }}</div>
+                  <div class="letter-sig-name">{{ letterCharName }}</div>
+                  <div class="letter-sig-date">{{ letterDateText }}</div>
                 </div>
               </div>
             </div>
@@ -304,7 +312,10 @@
               </div>
             </div>
             <div class="mag-content">
-              <div class="mag-text">{{ activeDiary.content }}</div>
+              <div class="mag-text">
+                <span class="mag-dropcap" v-if="viewerMagParts.first">{{ viewerMagParts.first }}</span>
+                <span>{{ viewerMagParts.rest }}</span>
+              </div>
               <div class="mag-divider"></div>
               <div class="mag-footer">
                 <span class="mag-author">{{ charName }}</span>
@@ -317,9 +328,8 @@
             <div class="pix-inner">
               <div class="pix-header">
                 <div class="pix-header-main">
-                  <div class="pix-avatar">
-                    <div v-if="activeDiary.imageMediaId || activeDiary.imageUrl" :style="getDiaryImageStyle(activeDiary)" class="pix-avatar-img"></div>
-                    <svg v-else viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
+                  <div class="pix-avatar" :style="getDiaryImageStyle(activeDiary)">
+                    <svg v-if="!activeDiary.imageMediaId && !activeDiary.imageUrl" viewBox="0 0 24 24"><path d="M20 6h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 0h-4V4h4v2z"/></svg>
                   </div>
                   <div class="pix-title">{{ activeDiary.title || '新手の物件' }}</div>
                 </div>
@@ -329,6 +339,22 @@
               <div class="pix-body">{{ activeDiary.content }}</div>
               <div class="pix-footer"><div class="pix-action">回收</div><div class="pix-action">互动</div></div>
             </div>
+          </div>
+
+          <div v-else-if="activeLayout === 'journal'" class="journal-paper">
+            <div class="journal-header"><div class="journal-title">{{ activeDiary.title || '起居注标题' }}</div><div class="journal-date">date {{ activeDateStr }}</div></div>
+            <div class="journal-body">{{ activeDiary.content }}</div>
+          </div>
+
+          <div v-else-if="activeLayout === 'profile'" class="profile-card">
+            <div class="card-banner"><svg class="banner-icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></div>
+            <div class="profile-avatar-container"><div class="profile-avatar-inner" :style="charAvatarStyle"></div></div>
+            <div class="profile-info"><div class="profile-name">{{ charName }}</div><div class="profile-bio">{{ activeDiary.title || '标题作为名片签名' }}</div></div>
+            <div class="profile-stats"><div class="stat-item"><span class="stat-number">128</span><span class="stat-label">Posts</span></div><div class="stat-divider"></div><div class="stat-item"><span class="stat-number">4.2k</span><span class="stat-label">Followers</span></div></div>
+            <div class="profile-action"><button class="btn-follow"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Follow</button></div>
+            <div class="profile-divider"><div></div></div>
+            <div class="profile-body">{{ activeDiary.content }}</div>
+            <div class="profile-footer"><div class="profile-tags"><span class="profile-tag-item">#{{ activeDiary.type || 'daily' }}</span></div><div>{{ activeDateStr }}</div></div>
           </div>
 
           <div v-else class="dd-card">
@@ -357,7 +383,7 @@
     </div>
 
     <!-- 生成回忆 Modal -->
-    <InnerModal :show="showSummary" @close="showSummary = false" class="forced-top-modal">
+    <InnerModal :show="showSummary" @close="showSummary = false">
       <div class="modal-title">生成高级回忆</div>
       <div class="modal-hint" style="text-align:center; margin-bottom:10px;">将提取所选记录的核心内容生成新日记</div>
       <div class="pill-group" style="margin-top:10px;">
@@ -397,11 +423,9 @@ const userAvatarStyle = computed(() => userProfile.value?.avatar ? `background-i
 const charName = computed(() => props.character?.name || 'TA')
 const charAvatarStyle = computed(() => props.character?.avatar ? `background-image:url(${props.character.avatar})` : 'background:#eee')
 
-const activeDropdown = ref(null)
 const filterLevel = ref('all')
 const filterArchived = ref('all')
 const filterMonth = ref('all')
-const filterType = ref('all')
 
 const organizeMode = ref(false)
 const selectedIds = ref([])
@@ -420,6 +444,46 @@ const showViewerModal = ref(false)
 const activeDiary = ref(null)
 
 const mediaMap = ref({})
+const openccConverter = ref(null)
+
+const loadOpenCC = () => {
+  return new Promise((resolve) => {
+    if (window.OpenCC) {
+      openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+      resolve()
+      return
+    }
+    const existing = document.getElementById('opencc-js')
+    if (existing) {
+      existing.addEventListener('load', () => {
+        if (window.OpenCC) openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+        resolve()
+      })
+      existing.addEventListener('error', resolve)
+      return
+    }
+    const s = document.createElement('script')
+    s.id = 'opencc-js'
+    s.src = 'https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js'
+    s.onload = () => {
+      if (window.OpenCC) openccConverter.value = window.OpenCC.Converter({ from: 'cn', to: 'tw' })
+      resolve()
+    }
+    s.onerror = resolve
+    document.head.appendChild(s)
+  })
+}
+
+const convertText = (text) => {
+  const t = text || ''
+  if (!openccConverter.value) return t
+  try {
+    return openccConverter.value(t)
+  } catch (e) {
+    return t
+  }
+}
+
 const loadMedia = async () => {
   const records = await db.media.toArray()
   const map = {}
@@ -427,7 +491,40 @@ const loadMedia = async () => {
   mediaMap.value = map
 }
 
-onMounted(() => { loadMedia() })
+const getDropCapParts = (text) => {
+  const t = text || ''
+  if (!t) return { first: '', rest: '' }
+  const first = t.charAt(0)
+  const rest = t.slice(1)
+  return { first, rest }
+}
+
+const splitToParagraphs = (text) => {
+  const t = text || ''
+  return t.split(/\n+/).map(s => s.trim()).filter(Boolean)
+}
+
+const previewMagParts = computed(() => {
+  return getDropCapParts(draft.value.content || '正文预览...')
+})
+
+const viewerMagParts = computed(() => {
+  return getDropCapParts(activeDiary.value?.content || '')
+})
+
+const letterUserName = computed(() => convertText(userName.value))
+const letterCharName = computed(() => convertText(charName.value))
+
+const previewLetterContent = computed(() => convertText(draft.value.content || '正文预览...'))
+const viewerLetterContent = computed(() => convertText(activeDiary.value?.content || ''))
+
+const previewLetterParagraphs = computed(() => splitToParagraphs(previewLetterContent.value))
+const viewerLetterParagraphs = computed(() => splitToParagraphs(viewerLetterContent.value))
+
+onMounted(async () => { 
+  loadMedia() 
+  await loadOpenCC()
+})
 watch(() => props.diaries, loadMedia, { deep: true })
 
 watch(() => props.settings, (s) => {
@@ -453,20 +550,14 @@ const needsImage = computed(() => ['magazine', 'pixel', 'default'].includes(prev
 const normalizeDate = (d) => { if(!d) return new Date(); const dt = new Date(d); return isNaN(dt.getTime()) ? new Date() : dt }
 const getActiveDateObj = (d) => d ? normalizeDate(d.timestamp || d.date) : new Date()
 
-// 用于主渲染
 const activeDateObj = computed(() => getActiveDateObj(activeDiary.value || draft.value))
 const activeDateStr = computed(() => `${activeDateObj.value.getFullYear()}.${String(activeDateObj.value.getMonth()+1).padStart(2,'0')}.${String(activeDateObj.value.getDate()).padStart(2,'0')}`)
 const activeYear = computed(() => activeDateObj.value.getFullYear())
 const activeMonthEn = computed(() => ['January','February','March','April','May','June','July','August','September','October','November','December'][activeDateObj.value.getMonth()])
 const activeMonthCn = computed(() => ['孟春','仲春','季春','孟夏','仲夏','季夏','孟秋','仲秋','季秋','孟冬','仲冬','季冬'][activeDateObj.value.getMonth()])
 const activeDay = computed(() => String(activeDateObj.value.getDate()).padStart(2,'0'))
+const letterDateText = computed(() => convertText(`${activeYear.value}年 ${activeMonthCn.value}`))
 
-const levelLabel = computed(() => { if(filterLevel.value==='1') return 'L1 记录'; if(filterLevel.value==='2') return 'L2 总结'; if(filterLevel.value==='3') return 'L3 回忆'; return '全部级别' })
-const archivedLabel = computed(() => { if(filterArchived.value==='active') return '未归档'; if(filterArchived.value==='archived') return '已归档'; return '全部状态' })
-const monthLabel = computed(() => filterMonth.value !== 'all' ? filterMonth.value : '全部时间')
-
-const toggleDropdown = (menu) => activeDropdown.value = activeDropdown.value === menu ? null : menu
-const selectFilter = (t, v) => { if(t==='level') filterLevel.value=v; if(t==='archived') filterArchived.value=v; if(t==='month') filterMonth.value=v; activeDropdown.value = null }
 const toggleMonthCollapse = (mk) => { const i = collapsedMonths.value.indexOf(mk); if(i>-1) collapsedMonths.value.splice(i,1); else collapsedMonths.value.push(mk) }
 
 const formatMonth = (d) => { const dt=normalizeDate(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}` }
@@ -480,7 +571,6 @@ const filteredDiaries = computed(() => {
     if (filterArchived.value === 'active' && d.isArchived) return false
     if (filterArchived.value === 'archived' && !d.isArchived) return false
     if (filterMonth.value !== 'all' && formatMonth(d.timestamp || d.date) !== filterMonth.value) return false
-    if (filterType.value !== 'all' && (d.type || 'daily') !== filterType.value) return false
     return true
   }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
 })
@@ -595,7 +685,7 @@ const downloadCardImage = async () => {
     document.body.removeChild(clone)
 
     const link = document.createElement('a')
-    link.download = `Memory_Diary_${activeDiary.value.id}.png`
+    link.download = `Memory_Archive_${activeDiary.value.id}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
     window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已完整保存至相册' }))
@@ -635,27 +725,31 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 </script>
 
 <style scoped>
-/* 移除 position:relative; z-index:1; 以打破层级限制 */
-.diary-tab { padding: 10px 0 20px 0; }
+/* 核心：移除了 relative 等层级限制，完全释放页面层叠上下文 */
+.diary-tab { padding: 10px 0 10px 0; }
 
-/* 强制 InnerModal 置顶，防止被底栏/顶栏穿插 */
-:deep(.modal-mask),
-:deep(.inner-modal-mask) {
-  z-index: 99999 !important;
+.diary-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; padding-right: 40px; }
+
+/* 换成绝对不惹事的原生原生下拉框 */
+.native-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #f4f5f7;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  padding: 6px 28px 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2214%22%20height%3D%2214%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23888%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-
-.dropdown-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 90; }
-.diary-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding-right: 40px; position: relative; z-index: 100; }
-
-.dropdown-wrapper { position: relative; }
-.filter-pill { display: inline-flex; align-items: center; gap: 6px; background: #f4f5f7; color: #555; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; user-select: none; }
-.filter-pill:active { transform: scale(0.95); }
-.filter-pill.is-active { background: #000; color: #fff; }
-.dropdown-menu { position: absolute; top: calc(100% + 8px); left: 0; background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 6px; min-width: 120px; z-index: 100; animation: popDown 0.15s ease-out; border: 1px solid rgba(0,0,0,0.05); }
-.dropdown-item { padding: 10px 12px; font-size: 12px; color: #333; border-radius: 8px; cursor: pointer; transition: 0.2s; user-select: none; }
-.dropdown-item:hover { background: #f4f5f7; }
-.dropdown-item.active { background: #eef2ff; color: #5c8aff; font-weight: 600; }
-@keyframes popDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.native-select:focus { border-color: #ddd; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
 
 .pill-group { display: flex; gap: 6px; background: #f4f5f7; padding: 4px; border-radius: 12px; }
 .pill-item { flex: 1; text-align: center; padding: 10px 0; font-size: 12px; color: #666; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
@@ -666,17 +760,18 @@ watch(() => filteredDiaries.value.length, () => { if(monthOptions.value.length >
 
 .empty-tip { text-align:center; color:#888; font-size:12px; margin-top:30px; }
 
-.scrubber-track { position: absolute; right: 0; top: 60px; bottom: 20px; width: 40px; pointer-events: none; z-index: 50; }
+.scrubber-track { position: absolute; right: 0; top: 60px; bottom: 20px; width: 40px; pointer-events: none; z-index: 10; }
 .scrubber { position: sticky; top: 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border: 1px solid rgba(0,0,0,0.05); border-radius: 20px; padding: 16px 8px; font-size: 11px; color: #888; box-shadow: 0 6px 20px rgba(0,0,0,0.08); pointer-events: auto; }
 .scrubber span { cursor: pointer; writing-mode: vertical-rl; text-align: center; transition: 0.2s; letter-spacing: 2px; }
 .scrubber span.active { color: #000; font-weight: 700; transform: scale(1.1); }
 
 .folder-group { margin-bottom: 20px; padding-right: 46px; }
-.folder-tab { display: inline-flex; align-items: center; gap: 8px; background: #fdfdfc; padding: 12px 20px; border-radius: 12px 12px 0 0; border: 1px solid #eee; border-bottom: none; cursor: pointer; user-select: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; z-index: 2; }
+.folder-tab { display: inline-flex; align-items: center; gap: 8px; background: #fdfdfc; padding: 12px 20px; border-radius: 12px 12px 0 0; border: 1px solid #eee; border-bottom: none; cursor: pointer; user-select: none; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
 .folder-tab:active { transform: scale(0.98); }
 .folder-tab.is-collapsed { border-radius: 12px; border-bottom: 1px solid #eee; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
 .folder-title { font-size: 14px; font-weight: 700; color: #333; }
 .folder-count { font-size: 12px; color: #aaa; font-weight: 500; }
+
 .folder-drawer { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
 .folder-drawer.is-open { grid-template-rows: 1fr; }
 .folder-drawer-inner { overflow: hidden; }
