@@ -43,7 +43,7 @@
             @press="startPress"
             @clear-press="clearPress"
             @toggle-voice="(m) => { m.showText = !m.showText }"
-            @retry-msg="handleRetryMsg"
+            @retry-msg="forceRegenerate"
             @transfer-action="handleTransferAction"
           />
         </template>
@@ -74,15 +74,15 @@
         @open-summary="showSummaryPanel = true"
       />
 
-      <!-- 核心修复 1: 监听抽屉抛出的 retry 和 regenerate 事件 -->
+      <!-- 核心修复：重新绑定抽屉的重发事件，指向追溯清除函数 -->
       <ChatActionSheet 
         v-model:show="actionSheet.show" 
         :msg="actionSheet.msg" 
         @quote="handleQuote" 
         @edit="handleEditOwnMsg" 
         @recall="handleRecallOwn"
-        @retry="handleRetryFromSheet"
-        @regenerate="handleRetryFromSheet"
+        @retry="forceRegenerate"
+        @regenerate="forceRegenerate"
       />
       
       <ChatGeneralAlerts v-model:apiErrorDetails="apiErrorDetails" v-model:pendingAutoSummary="pendingAutoSummary" :alert="alert" :chatTitle="pseudoChatObj.title" @close-alert="alert.show = false" @confirm-general="handleAlertConfirm" />
@@ -242,25 +242,35 @@ const handleRecallOwn = async () => {
   if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
 }
 
-// 气泡组件里直接点击失败的重试
-const handleRetryMsg = (msg) => {
-  setTimeout(async () => {
-    await db.messages.where({ id: msg.id }).delete()
-    messages.value = messages.value.filter(m => m.id !== msg.id)
-    triggerAiReply()
-  }, 50)
-}
-
-// 核心修复 1: 抽屉菜单里的长按重Roll
-const handleRetryFromSheet = () => {
-  const targetMsg = actionSheet.value.msg
-  if (!targetMsg) return
+// 核心修复 1: 完美追溯删除机制 (无论点哪里重Roll，都删掉最后一次 User 发言之后的所有 AI 回复)
+const forceRegenerate = async () => {
+  if (isWaiting.value) return
   actionSheet.value.show = false
-  setTimeout(async () => {
-    await db.messages.where({ id: targetMsg.id }).delete()
-    messages.value = messages.value.filter(m => m.id !== targetMsg.id)
-    triggerAiReply()
-  }, 300) // 给一点抽屉关闭的动画时间
+  
+  // 找最后一个 user 消息
+  let lastUserIdx = -1
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].role === 'user') {
+      lastUserIdx = i
+      break
+    }
+  }
+  
+  let msgsToDelete = []
+  if (lastUserIdx !== -1) {
+    msgsToDelete = messages.value.slice(lastUserIdx + 1)
+  } else {
+    // 如果一条 user 消息都没有，就清空所有 AI 消息
+    msgsToDelete = [...messages.value]
+  }
+  
+  const idsToDelete = msgsToDelete.map(m => m.id)
+  if (idsToDelete.length > 0) {
+    await db.messages.where('id').anyOf(idsToDelete).delete()
+    messages.value = messages.value.filter(m => !idsToDelete.includes(m.id))
+  }
+  
+  setTimeout(() => { triggerAiReply() }, 300)
 }
 
 const handleTransferAction = async (msg, action) => {
@@ -341,13 +351,14 @@ const triggerAiReply = async () => {
   try {
     const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
     
-    // 核心修复 2: 精准替换并隐藏长段的 fullJson，保留 promptSuffix 规则指令
+    // 核心修复 2: 精确的正则打码替换，保证 JSON 被遮挡，但 API 会发送全量
     const safeReq = JSON.parse(JSON.stringify(apiMessages))
     const sysIdx = safeReq.findIndex(x => x.role === 'system')
-    if (sysIdx > -1 && chatProfile.value?.fullJson) {
-      const secretStr = JSON.stringify(chatProfile.value.fullJson, null, 2)
-      // 用一句提示语替换掉那一长串人设
-      safeReq[sysIdx].content = safeReq[sysIdx].content.replace(secretStr, '\n\n[\n  "保密协议已生效",\n  "当前角色的深层人设 (JSON) 已被系统强制隐藏，防止剧透。"\n]\n\n')
+    if (sysIdx > -1) {
+      safeReq[sysIdx].content = safeReq[sysIdx].content.replace(
+        /\{[\s\S]*?\}/, 
+        '{\n  "__hidden__": "该角色的深层 JSON 人设已在本地控制台打码，以防剧透",\n  "note": "此修改仅在调试面板生效，API 发送的是完整数据"\n}'
+      )
     }
     
     apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: safeReq, time: new Date().toLocaleTimeString() }
@@ -412,6 +423,7 @@ const handleRejectReveal = async () => {
   await pushLocalMessage({ role: 'system', type: 'text', content: '你拒绝了对方的请求。' })
 }
 
+// 核心修复 3: 完美的数据隔离与平移
 const handleAcceptReveal = async () => {
   showRevealModal.value = false
   const fullJson = chatProfile.value.fullJson
@@ -422,6 +434,10 @@ const handleAcceptReveal = async () => {
   newChar.trueName = realName
   newChar.description = JSON.stringify(fullJson, null, 2)
   newChar.first_mes = '我们终于正式见面了。'
+  
+  // 安全补全 variables 底层结构，防止 createSession 崩溃
+  if (!newChar.extensions) newChar.extensions = {}
+  if (!newChar.extensions.aero_vars) newChar.extensions.aero_vars = { variables: [], variablePresets: [] }
   
   let selectedAvatar = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(realName)}&backgroundColor=f4f5f7`
   const customUrls = (playerProfile.value.settings?.avatarUrls || '').split('\n').map(u => u.trim()).filter(Boolean)
@@ -437,15 +453,17 @@ const handleAcceptReveal = async () => {
   const realSession = createSession([realChar])
   realSession.isBlocked = true 
 
+  // 将消息平移到新的 QQ 会话
   await db.messages.where({ sessionId: `dating_${props.chatId}` }).modify({ sessionId: realSession.id })
   addFriendRequest(realSession.id, `你好，我是 ${realName}，很高兴重新认识你。`)
-  
   await addMemory(realSession.id, { characterId: realChar.id, type: 'milestone', source: 'dating_app', content: `我们在冷推(Spark)相遇，今天正式交换了姓名（原来TA叫${realName}），并互相发送了好友验证。` })
   
-  await db.dating_chats.update(props.chatId, { status: 'revealed' })
+  // 核心改动：平移完毕后，直接销毁冷推里的旧数据，干干净净！
+  await db.dating_chats.delete(props.chatId)
+  await db.dating_profiles.delete(chatData.value.profileId)
+  
   window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
-
-  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已向对方发送好友申请！' }))
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已转移至通讯录验证列表！' }))
   emit('close')
 }
 </script>
