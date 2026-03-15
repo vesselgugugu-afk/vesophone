@@ -7,7 +7,8 @@
       <div v-if="sysToast" class="sys-toast glass">{{ sysToast }}</div>
     </transition>
 
-    <div class="system-status-bar">
+    <!-- 支持动态显示隐藏，不占据 DOM 空间 -->
+    <div v-show="!appearance.hideStatusBar" class="system-status-bar">
       <div class="status-left"><span class="status-time">{{ time }}</span></div>
       <div class="status-center"><MiniCapsule @expand="activeApp = 'music'" /></div>
       <div class="status-right">
@@ -26,7 +27,8 @@
     <!-- 隐藏上传器 -->
     <input type="file" ref="widgetFileInput" accept="image/*" style="display:none;" @change="handleWidgetFileChange" />
 
-    <div class="workspace-container" @click="handleWorkspaceClick">
+    <!-- 动态调整顶部内边距：如果在隐藏状态栏的情况下，自动保留刘海屏避挡空间 -->
+    <div class="workspace-container" @click="handleWorkspaceClick" :style="appearance.hideStatusBar ? { paddingTop: 'calc(env(safe-area-inset-top, 20px) + 10px)' } : {}">
       
       <transition name="fade">
         <div v-if="isEditMode" class="edit-done-btn glass" @click.stop="isEditMode = false">完成</div>
@@ -38,7 +40,8 @@
           <VueDraggable v-model="page1" group="desktop" class="desktop-grid" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
             <div v-for="item in page1" :key="item.id" class="grid-item" :class="[`size-${item.size}`, { 'is-wiggle': isEditMode && !isDragging }]" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @mousedown="handleTouchStart" @mouseup="handleTouchEnd" @contextmenu.prevent>
               
-              <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @click.stop="removeDesktopItem(item.id)">
+              <!-- 修复移动端删除按钮不灵敏 -->
+              <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @touchstart.stop @mousedown.stop @click.stop="removeDesktopItem(item.id)" @touchend.stop.prevent="removeDesktopItem(item.id)">
                 <i class="fas fa-minus"></i>
               </div>
               
@@ -52,8 +55,11 @@
               <!-- 赋予组件点击路由能力 -->
               <div v-else-if="item.type === 'widget'" class="widget-wrap" @click.stop="handleWidgetClick(item)">
                 <DesktopWidgets :item="item" />
-                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)" @mousedown.stop @touchstart.stop>
-                  <div class="edit-btn-glass"><i class="fas fa-pencil-alt"></i> 配置</div>
+                <!-- 修复移动端配置按钮点击穿透和拦截问题 -->
+                <div v-if="isEditMode" class="widget-edit-mask">
+                  <div class="edit-btn-glass" @touchstart.stop @mousedown.stop @click.stop="openWidgetConfig(item)" @touchend.stop.prevent="openWidgetConfig(item)">
+                    <i class="fas fa-pencil-alt"></i> 配置
+                  </div>
                 </div>
               </div>
 
@@ -66,7 +72,7 @@
           <VueDraggable v-model="page2" group="desktop" class="desktop-grid" :animation="250" :disabled="!isEditMode" ghost-class="ghost-item" @start="isDragging = true" @end="isDragging = false">
             <div v-for="item in page2" :key="item.id" class="grid-item" :class="[`size-${item.size}`, { 'is-wiggle': isEditMode && !isDragging }]" @touchstart="handleTouchStart" @touchend="handleTouchEnd" @mousedown="handleTouchStart" @mouseup="handleTouchEnd" @contextmenu.prevent>
               
-              <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @click.stop="removeDesktopItem(item.id)">
+              <div v-if="isEditMode && item.type === 'widget'" class="remove-badge" @touchstart.stop @mousedown.stop @click.stop="removeDesktopItem(item.id)" @touchend.stop.prevent="removeDesktopItem(item.id)">
                 <i class="fas fa-minus"></i>
               </div>
               
@@ -79,8 +85,10 @@
 
               <div v-else-if="item.type === 'widget'" class="widget-wrap" @click.stop="handleWidgetClick(item)">
                 <DesktopWidgets :item="item" />
-                <div v-if="isEditMode" class="widget-edit-mask" @click.stop="openWidgetConfig(item)" @mousedown.stop @touchstart.stop>
-                  <div class="edit-btn-glass"><i class="fas fa-pencil-alt"></i> 配置</div>
+                <div v-if="isEditMode" class="widget-edit-mask">
+                  <div class="edit-btn-glass" @touchstart.stop @mousedown.stop @click.stop="openWidgetConfig(item)" @touchend.stop.prevent="openWidgetConfig(item)">
+                    <i class="fas fa-pencil-alt"></i> 配置
+                  </div>
                 </div>
               </div>
 
@@ -403,7 +411,7 @@ const appBackgroundStyle = computed(() => {
 
 <style scoped>
 .system-status-bar { position: relative; flex-shrink: 0; height: calc(env(safe-area-inset-top, 30px) + 15px); min-height: 45px; display: flex; justify-content: space-between; align-items: center; padding: 0 25px; z-index: 999999; background: transparent; transition: 0.3s; }
-.workspace-container { flex: 1; position: relative; width: 100%; overflow: hidden; display: flex; flex-direction: column; }
+.workspace-container { flex: 1; position: relative; width: 100%; overflow: hidden; display: flex; flex-direction: column; transition: padding-top 0.3s ease; }
 .status-left { font-size: 14px; font-weight: 700; color: #333; text-shadow: 0 1px 3px rgba(255,255,255,0.5); }
 .status-center { position: absolute; left: 50%; transform: translateX(-50%); z-index: 1000000; }
 .status-right { display: flex; align-items: center; color: #333; text-shadow: 0 1px 3px rgba(255,255,255,0.5); position: relative; }
@@ -432,14 +440,17 @@ const appBackgroundStyle = computed(() => {
 @keyframes wiggle { 0% { transform: rotate(-1.5deg); } 50% { transform: rotate(1.5deg); } 100% { transform: rotate(-1.5deg); } }
 .is-wiggle { animation: wiggle 0.3s infinite ease-in-out alternate; transform-origin: center center; }
 
-.remove-badge { position: absolute; top: -6px; left: -6px; width: 22px; height: 22px; background: rgba(255, 59, 48, 0.95); color: #fff; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 12px; z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer; border: 1.5px solid #fff; }
+/* 减号按钮也加了 pointer-events: auto 保障点击 */
+.remove-badge { position: absolute; top: -6px; left: -6px; width: 22px; height: 22px; background: rgba(255, 59, 48, 0.95); color: #fff; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 12px; z-index: 20; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer; pointer-events: auto; border: 1.5px solid #fff; }
 .edit-done-btn { position: absolute; top: 10px; right: 20px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--text-main); z-index: 50; cursor: pointer; border-radius: 20px; }
 .ghost-item { opacity: 0.3; transform: scale(0.95); }
 
 .widget-wrap { position: relative; width: 100%; height: 100%; cursor: pointer; }
 .widget-wrap:active { transform: scale(0.98); transition: 0.2s; }
-.widget-edit-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.15); border-radius: inherit; display: flex; justify-content: center; align-items: center; z-index: 10; border-radius: 24px; cursor: pointer; }
-.edit-btn-glass { background: rgba(255,255,255,0.95); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.1); pointer-events: none; }
+
+/* 核心修改：让暗色遮罩穿透拖拽，只拦截按钮本体 */
+.widget-edit-mask { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.15); border-radius: inherit; display: flex; justify-content: center; align-items: center; z-index: 10; border-radius: 24px; pointer-events: none; }
+.edit-btn-glass { background: rgba(255,255,255,0.95); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #333; box-shadow: 0 4px 10px rgba(0,0,0,0.1); pointer-events: auto; cursor: pointer; }
 
 .dock-container { position: absolute; bottom: calc(15px + env(safe-area-inset-bottom, 0px)); left: 20px; right: 20px; height: 70px; z-index: 20; }
 .dock { width: 100%; height: 100%; display: flex; justify-content: space-around; align-items: center; padding: 0 10px; border-radius: 35px; }

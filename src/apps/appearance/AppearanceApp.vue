@@ -28,6 +28,21 @@
             </div>
           </div>
         </div>
+
+        <!-- 新增：界面组件可见性配置 -->
+        <div class="appearance-section" style="margin-top: 15px;">
+          <div class="appearance-title">界面布局</div>
+          <div class="appearance-item">
+            <div class="appearance-label">显示 App 模拟顶栏</div>
+            <div class="appearance-actions">
+              <div class="appearance-btn" :style="!appearance.hideStatusBar ? 'background: #5c8aff; color: #fff; border-color: #5c8aff;' : ''" @click="appearance.hideStatusBar = !appearance.hideStatusBar">
+                {{ appearance.hideStatusBar ? '已隐藏' : '已显示' }}
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:#888; margin-top:8px; line-height:1.4;">注：隐藏后将不显示系统时间、电量及音乐灵动岛，获得更纯粹的全屏体验。真正的手机系统状态栏需重新配置 PWA 并重装生效。</div>
+        </div>
+
         <div style="font-size:12px; color:#888; text-align:center; padding:20px 0;">
           提示：桌面小组件的独立图片和文字，请在桌面长按进入编辑模式后，点击小组件本体进行配置。
         </div>
