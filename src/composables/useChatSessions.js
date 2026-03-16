@@ -231,8 +231,9 @@ export function useChatSessions() {
     if (!message.timestamp) message.timestamp = Date.now()
     
     const fullMsg = { ...message, sessionId }
+    const safeMsg = toPlain(fullMsg)
     
-    await db.messages.add(fullMsg)
+    await db.messages.add(safeMsg)
     
     if (activeSessionId === sessionId) {
       activeMessages.value.push(fullMsg)
@@ -481,4 +482,3 @@ export function useChatSessions() {
     addFriendRequest, removeFriendRequest, acceptFriendRequest
   }
 }
-

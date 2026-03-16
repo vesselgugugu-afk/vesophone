@@ -1,9 +1,7 @@
 <template>
   <transition name="slide-up">
-    <!-- 修复了这里的内联样式，移除了错误的 position: relative; -->
     <div v-if="show" class="app-window">
       
-      <!-- 主动消息触发通知横幅 -->
       <transition name="slide-down">
         <div v-if="proactiveNotification" class="proactive-toast" @click="enterChat(proactiveNotification.chat)">
           <div class="toast-avatar" :style="proactiveNotification.avatar ? `background-image:url(${proactiveNotification.avatar})` : ''">
@@ -118,6 +116,24 @@ let isProactiveFetching = false
 const currentChat = computed(() => chatSessions.value.find((c) => c.id === currentChatId.value) || null)
 const tabTitle = computed(() => ({ chats: '聊天', contacts: '通讯录', games: '游戏', me: '我的' })[activeTab.value])
 
+// 核心跳转中枢
+const handleOpenContacts = () => {
+  activeTab.value = 'contacts'
+  subPage.value = 'main'
+  currentChatId.value = null
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('qq-open-new-friends'))
+  }, 100)
+}
+
+onMounted(() => {
+  window.addEventListener('sys-open-qq-contacts', handleOpenContacts)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('sys-open-qq-contacts', handleOpenContacts)
+})
+
 const enterChat = (chat) => { 
   currentChatId.value = chat.id 
   proactiveNotification.value = null
@@ -146,30 +162,22 @@ const handleStartChat = () => {
   }
 }
 
-// ==== 真·API驱动后台主动触发引擎 ====
 onMounted(() => {
   proactiveTimer = setInterval(async () => {
     if (isProactiveFetching || proactiveNotification.value || !apiKey.value) return
-
     const now = Date.now()
     for (const chat of chatSessions.value) {
       if (!chat.settings?.proactiveEnabled) continue
-      
       const intervalMs = (chat.settings.proactiveIntervalMin || 60) * 60 * 1000
       const lastTime = chat.lastMessageTimestamp || 0
       
       if (now - lastTime > intervalMs && currentChatId.value !== chat.id) {
         isProactiveFetching = true
-        
         try {
           const msgs = await db.messages.where({ sessionId: chat.id }).toArray()
           const mems = await db.memories.where({ sessionId: chat.id }).toArray()
-
           const apiMessages = buildApiMessages(chat, msgs, mems)
-          apiMessages.push({ 
-            role: 'system', 
-            content: '【系统高优指令：触发闲置对话】用户已经有一段时间没有理你了。请根据你的人设性格、先前的聊天语境，主动发一条消息引起话题。' 
-          })
+          apiMessages.push({ role: 'system', content: '【系统高优指令：触发闲置对话】用户已经有一段时间没有理你了。请根据你的人设性格、先前的聊天语境，主动发一条消息引起话题。' })
 
           const response = await fetch(apiUrl.value, {
             method: 'POST',
@@ -181,9 +189,7 @@ onMounted(() => {
           const data = await response.json()
           let rawText = data.choices[0].message?.content || ''
 
-          const statusRegex = /<statue_update>([\s\S]*?)<\/statue_update>/gi
-          rawText = rawText.replace(statusRegex, '').trim()
-          
+          rawText = rawText.replace(/<statue_update>([\s\S]*?)<\/statue_update>/gi, '').trim()
           const msgRegex = /<msg(?:[^>]*)>([\s\S]*?)<\/msg>/gi
           const fullRegex = /<msg(?:\s+type="([^"]+)")?(?:\s+ref="([^"]+)")?(?:\s+amount="([^"]+)")?(?:\s+action="([^"]+)")?>([\s\S]*?)<\/msg>/i
 
@@ -220,7 +226,6 @@ onMounted(() => {
           }
           proactiveNotification.value = { chat: chat, name: charName, avatar: avatarUrl }
           setTimeout(() => { proactiveNotification.value = null }, 4000)
-
         } catch (e) {
           console.error('[Proactive Engine Error]', e)
         } finally {
@@ -239,61 +244,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.proactive-toast {
-  position: absolute;
-  top: env(safe-area-inset-top, 20px);
-  left: 15px;
-  right: 15px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 15px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-  z-index: 200;
-  cursor: pointer;
-}
-
-.toast-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent-color);
-  color: #fff;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-size: cover;
-  background-position: center;
-  font-weight: 600;
-}
-
-.toast-content {
-  flex: 1;
-}
-
-.toast-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: #333;
-}
-
-.toast-msg {
-  font-size: 12px;
-  color: #666;
-  margin-top: 4px;
-}
-
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.slide-down-enter-from,
-.slide-down-leave-to {
-  transform: translateY(-100%);
-  opacity: 0;
-}
+.proactive-toast { position: absolute; top: env(safe-area-inset-top, 20px); left: 15px; right: 15px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 16px; padding: 15px; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); z-index: 200; cursor: pointer; }
+.toast-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent-color); color: #fff; display: flex; justify-content: center; align-items: center; background-size: cover; background-position: center; font-weight: 600; }
+.toast-content { flex: 1; }
+.toast-title { font-weight: 600; font-size: 13px; color: #333; }
+.toast-msg { font-size: 12px; color: #666; margin-top: 4px; }
+.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-down-enter-from, .slide-down-leave-to { transform: translateY(-100%); opacity: 0; }
 </style>
-

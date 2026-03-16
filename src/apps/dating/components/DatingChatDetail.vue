@@ -2,7 +2,7 @@
   <transition name="slide-up">
     <div v-if="show" class="dating-chat-page">
       
-      <div class="dating-chat-header">
+      <div class="dating-chat-header" v-if="!isSelectionMode">
         <i class="fas fa-chevron-left" @click="$emit('close')" style="font-size: 18px; padding: 10px; cursor: pointer;"></i>
         
         <div class="header-info" @click="showSimpleProfile = true" style="cursor:pointer;">
@@ -19,6 +19,13 @@
           <i class="fas fa-terminal" style="font-size: 14px; color: #c7c7cc; cursor: pointer;" @click="showDebugPanel = true"></i>
           <i class="fas fa-ellipsis-h" style="font-size: 18px; color: #8e8e93; cursor: pointer;" @click="handleDisconnect"></i>
         </div>
+      </div>
+      
+      <!-- 多选模式下的头部 -->
+      <div class="dating-chat-header" v-else style="background:#f4f5f7;">
+        <div style="font-size:14px; color:#888;" @click="isSelectionMode = false">取消</div>
+        <div style="font-weight:600; font-size:14px;">已选择 {{ selectedMsgs.length }} 项</div>
+        <div style="width:28px;"></div>
       </div>
 
       <div class="chat-area" ref="chatBox">
@@ -37,11 +44,12 @@
             v-else
             :msg="msg"
             :chat="pseudoChatObj"
-            :isSelectionMode="false"
-            :isSelected="false"
+            :isSelectionMode="isSelectionMode"
+            :isSelected="selectedMsgs.includes(msg.id)"
             :showTime="false"
             @press="startPress"
             @clear-press="clearPress"
+            @toggle-select="toggleSelect"
             @toggle-voice="(m) => { m.showText = !m.showText }"
             @retry-msg="forceRegenerate"
             @transfer-action="handleTransferAction"
@@ -58,11 +66,12 @@
         </div>
       </div>
 
+      <!-- 核心修复：补充底栏相关的重试和删除事件对接 -->
       <ChatBottomBar 
         v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
         :musicState="{}"
-        :isSelectionMode="false"
+        :isSelectionMode="isSelectionMode"
         :quotingText="quotingText"
         @send-text="handleSendText"
         @send-sticker="sendSticker"
@@ -72,9 +81,11 @@
         @open-memory="handleRestricted('memory')"
         @start-offline="handleRestricted('offline')"
         @open-summary="showSummaryPanel = true"
+        @reroll="forceRegenerate"
+        @delete-selected="deleteSelected"
       />
 
-      <!-- 核心修复：重新绑定抽屉的重发事件，指向追溯清除函数 -->
+      <!-- 核心修复：对接多选触发 -->
       <ChatActionSheet 
         v-model:show="actionSheet.show" 
         :msg="actionSheet.msg" 
@@ -83,6 +94,7 @@
         @recall="handleRecallOwn"
         @retry="forceRegenerate"
         @regenerate="forceRegenerate"
+        @multi-select="isSelectionMode = true"
       />
       
       <ChatGeneralAlerts v-model:apiErrorDetails="apiErrorDetails" v-model:pendingAutoSummary="pendingAutoSummary" :alert="alert" :chatTitle="pseudoChatObj.title" @close-alert="alert.show = false" @confirm-general="handleAlertConfirm" />
@@ -183,6 +195,10 @@ const restrictedAlert = ref({ show: false, title: '', desc: '', icon: '', type: 
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
 
+// 新增多选状态
+const isSelectionMode = ref(false)
+const selectedMsgs = ref([])
+
 watch(() => props.show, async (val) => {
   if (val && props.chatId) {
     chatData.value = await db.dating_chats.get(props.chatId)
@@ -195,6 +211,8 @@ watch(() => props.show, async (val) => {
     chatData.value = null
     chatProfile.value = null
     messages.value = []
+    isSelectionMode.value = false
+    selectedMsgs.value = []
   }
 })
 
@@ -242,12 +260,33 @@ const handleRecallOwn = async () => {
   if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
 }
 
-// 核心修复 1: 完美追溯删除机制 (无论点哪里重Roll，都删掉最后一次 User 发言之后的所有 AI 回复)
+// 多选逻辑
+const toggleSelect = (id) => {
+  if (selectedMsgs.value.includes(id)) {
+    selectedMsgs.value = selectedMsgs.value.filter(x => x !== id)
+  } else {
+    selectedMsgs.value.push(id)
+  }
+}
+
+const deleteSelected = async () => {
+  if (selectedMsgs.value.length === 0) {
+    isSelectionMode.value = false
+    return
+  }
+  if (confirm(`确定删除选中的 ${selectedMsgs.value.length} 条消息吗？`)) {
+    await db.messages.where('id').anyOf(selectedMsgs.value).delete()
+    messages.value = messages.value.filter(m => !selectedMsgs.value.includes(m.id))
+    selectedMsgs.value = []
+    isSelectionMode.value = false
+  }
+}
+
+// 核心修复：重Roll追踪删除最后一次 User 之后的所有 AI 消息
 const forceRegenerate = async () => {
   if (isWaiting.value) return
   actionSheet.value.show = false
   
-  // 找最后一个 user 消息
   let lastUserIdx = -1
   for (let i = messages.value.length - 1; i >= 0; i--) {
     if (messages.value[i].role === 'user') {
@@ -260,7 +299,6 @@ const forceRegenerate = async () => {
   if (lastUserIdx !== -1) {
     msgsToDelete = messages.value.slice(lastUserIdx + 1)
   } else {
-    // 如果一条 user 消息都没有，就清空所有 AI 消息
     msgsToDelete = [...messages.value]
   }
   
@@ -351,14 +389,14 @@ const triggerAiReply = async () => {
   try {
     const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
     
-    // 核心修复 2: 精确的正则打码替换，保证 JSON 被遮挡，但 API 会发送全量
+    // 核心修复：用非常明确的文案替换超长的人设，避免用户误解
     const safeReq = JSON.parse(JSON.stringify(apiMessages))
     const sysIdx = safeReq.findIndex(x => x.role === 'system')
-    if (sysIdx > -1) {
-      safeReq[sysIdx].content = safeReq[sysIdx].content.replace(
-        /\{[\s\S]*?\}/, 
-        '{\n  "__hidden__": "该角色的深层 JSON 人设已在本地控制台打码，以防剧透",\n  "note": "此修改仅在调试面板生效，API 发送的是完整数据"\n}'
-      )
+    if (sysIdx > -1 && chatProfile.value?.fullJson) {
+      const secretStr = JSON.stringify(chatProfile.value.fullJson, null, 2)
+      if (secretStr) {
+        safeReq[sysIdx].content = safeReq[sysIdx].content.replace(secretStr, '\n\n【< 该角色的真实人设 JSON 数据已被系统刻意打码，避免您查阅日志时被剧透。但该数据已成功发送至 AI，请放心 >】\n\n')
+      }
     }
     
     apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: safeReq, time: new Date().toLocaleTimeString() }
@@ -423,21 +461,21 @@ const handleRejectReveal = async () => {
   await pushLocalMessage({ role: 'system', type: 'text', content: '你拒绝了对方的请求。' })
 }
 
-// 核心修复 3: 完美的数据隔离与平移
+// 核心修复：创建 QQ 角色前安全补充变量系统底层字段
 const handleAcceptReveal = async () => {
   showRevealModal.value = false
   const fullJson = chatProfile.value.fullJson
   const realName = fullJson.name || chatProfile.value.nickname
-  const newChar = getEmptyCharacter()
   
+  const newChar = getEmptyCharacter()
   newChar.name = realName
   newChar.trueName = realName
   newChar.description = JSON.stringify(fullJson, null, 2)
   newChar.first_mes = '我们终于正式见面了。'
   
-  // 安全补全 variables 底层结构，防止 createSession 崩溃
+  // 防止 createSession 直接白屏报错的核心代码
   if (!newChar.extensions) newChar.extensions = {}
-  if (!newChar.extensions.aero_vars) newChar.extensions.aero_vars = { variables: [], variablePresets: [] }
+  newChar.extensions.aero_vars = { variables: [], variablePresets: [] }
   
   let selectedAvatar = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(realName)}&backgroundColor=f4f5f7`
   const customUrls = (playerProfile.value.settings?.avatarUrls || '').split('\n').map(u => u.trim()).filter(Boolean)
@@ -453,17 +491,22 @@ const handleAcceptReveal = async () => {
   const realSession = createSession([realChar])
   realSession.isBlocked = true 
 
-  // 将消息平移到新的 QQ 会话
   await db.messages.where({ sessionId: `dating_${props.chatId}` }).modify({ sessionId: realSession.id })
   addFriendRequest(realSession.id, `你好，我是 ${realName}，很高兴重新认识你。`)
+  
   await addMemory(realSession.id, { characterId: realChar.id, type: 'milestone', source: 'dating_app', content: `我们在冷推(Spark)相遇，今天正式交换了姓名（原来TA叫${realName}），并互相发送了好友验证。` })
   
-  // 核心改动：平移完毕后，直接销毁冷推里的旧数据，干干净净！
   await db.dating_chats.delete(props.chatId)
   await db.dating_profiles.delete(chatData.value.profileId)
   
   window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
-  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已转移至通讯录验证列表！' }))
+  
+  // 触发全局事件拉起 QQ
+  window.dispatchEvent(new CustomEvent('sys-open-app', { detail: 'qq' }))
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('sys-open-qq-contacts'))
+  }, 150)
+  
   emit('close')
 }
 </script>
@@ -522,3 +565,4 @@ const handleAcceptReveal = async () => {
 .btn-reject { background: #f4f5f7; color: #ff3b30; }
 .btn-accept { background: #14CCCC; color: white; box-shadow: 0 4px 12px rgba(20, 204, 204, 0.3); }
 </style>
+

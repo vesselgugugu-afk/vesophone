@@ -48,7 +48,7 @@
       <i class="fas fa-trash btn-delete" @click.stop="promptDelete(char)"></i>
     </div>
 
-    <!-- 核心更新：优雅的删除防呆弹窗 -->
+    <!-- 删除防呆弹窗 -->
     <InnerModal :show="deleteModal.show" @close="deleteModal.show = false">
       <div class="modal-title" style="color:#ff5252;">删除联系人</div>
       <div style="padding:20px 15px; text-align:center; color:#555; font-size:14px; line-height:1.6;">
@@ -63,7 +63,7 @@
       </div>
     </InnerModal>
 
-    <!-- 核心更新：支持多条消息堆叠的好友验证申请模态框 -->
+    <!-- 支持多条消息堆叠的好友验证申请模态框 -->
     <InnerModal :show="showNewFriends" @close="showNewFriends = false">
       <div class="modal-title">好友验证请求</div>
       
@@ -82,7 +82,6 @@
             </div>
           </div>
           
-          <!-- 多条消息堆叠渲染区 -->
           <div style="font-size:13px; color:#555; background:#fff; padding:10px; border-radius:8px; border:1px solid #e5e5e5; display:flex; flex-direction:column; gap:8px;">
             <div v-for="(msg, idx) in req.messages" :key="idx" :style="idx !== req.messages.length - 1 ? 'border-bottom:1px dashed #f0f0f0; padding-bottom:8px;' : ''">
               <div style="font-size:10px; color:#aaa; margin-bottom:4px;">{{ new Date(msg.time).toLocaleString() }}</div>
@@ -106,7 +105,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { useChatSessions } from '@/composables/useChatSessions'
 import InnerModal from '@/components/InnerModal.vue'
@@ -119,6 +118,19 @@ const { chatSessions, friendRequests, acceptFriendRequest, removeFriendRequest, 
 const showNewFriends = ref(false)
 const deleteModal = ref({ show: false, char: null })
 
+// 核心修复：接收来自冷推的跨应用打开信号
+const handleOpenNewFriends = () => {
+  showNewFriends.value = true
+}
+
+onMounted(() => {
+  window.addEventListener('qq-open-new-friends', handleOpenNewFriends)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('qq-open-new-friends', handleOpenNewFriends)
+})
+
 const promptDelete = (char) => {
   deleteModal.value = { show: true, char }
 }
@@ -126,17 +138,13 @@ const promptDelete = (char) => {
 const executeDelete = () => {
   const charId = deleteModal.value.char.id
   const session = chatSessions.value.find(c => !c.isGroup && c.participants && c.participants.length > 0 && c.participants[0].id === charId)
-  if (session) {
-    deleteSession(session.id)
-  }
+  if (session) deleteSession(session.id)
   deleteChar(charId)
   window.dispatchEvent(new CustomEvent('sys-toast', { detail: '角色及相关数据已彻底抹除' }))
   deleteModal.value.show = false
 }
 
-const getReqChat = (chatId) => {
-  return chatSessions.value.find(c => c.id === chatId)
-}
+const getReqChat = (chatId) => { return chatSessions.value.find(c => c.id === chatId) }
 
 const getReqAvatar = (chatId) => {
   const chat = getReqChat(chatId)
@@ -163,14 +171,6 @@ const handleAccept = (id) => {
 </script>
 
 <style scoped>
-.menu-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-  cursor: pointer;
-}
-.menu-item:active {
-  background: #f9f9f9;
-}
+.menu-item { display: flex; justify-content: space-between; align-items: center; background: #fff; cursor: pointer; }
+.menu-item:active { background: #f9f9f9; }
 </style>
