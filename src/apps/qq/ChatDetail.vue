@@ -1,521 +1,1080 @@
 <template>
-  <transition name="slide-up">
-    <div v-if="show" class="dating-chat-page">
-      
-      <!-- 极简模式 Header -->
-      <div class="dating-chat-header">
-        <i class="fas fa-chevron-left" @click="$emit('close')" style="font-size: 18px; padding: 10px; cursor: pointer;"></i>
-        
-        <div class="header-info" @click="showSimpleProfile = true" style="cursor:pointer;">
-          <div class="chat-title">
-            {{ pseudoChatObj.title }} 
-            <i class="fas fa-info-circle" style="font-size:10px; color:#c7c7cc; margin-left: 4px;"></i>
-          </div>
-          <div class="chat-sub" v-if="chatData?.status === 'revealed'">已加入 QQ 通讯录</div>
-          <div class="chat-sub" v-else-if="chatData?.status === 'exited'">对方已离开</div>
-          <div class="chat-sub" v-else>保密协议生效中...</div>
-        </div>
-        
-        <div style="display:flex; gap:10px; align-items:center;">
-          <i class="fas fa-terminal" style="font-size: 14px; color: #c7c7cc; cursor: pointer;" @click="showDebugPanel = true"></i>
-          <i class="fas fa-ellipsis-h" style="font-size: 18px; color: #8e8e93; cursor: pointer;" @click="handleDisconnect"></i>
-        </div>
-      </div>
+  <div style="display:flex; flex-direction:column; flex:1; overflow:hidden; position:relative;">
+    
+    <component :is="'style'" v-if="chat.customCss">{{ chat.customCss }}</component>
+    <component :is="'style'" v-if="musicState.customLyricCss">{{ musicState.customLyricCss }}</component>
 
-      <!-- 聊天区域复用 QQ 气泡 -->
-      <div class="chat-area" ref="chatBox">
-        <div class="system-intro" v-if="chatData?.status !== 'revealed'">
-          你和 TA 相遇了。<br>对方的人设完全保密，试着去了解 TA 吧。
-        </div>
+    <ChatHeader 
+      :title="chat.title"
+      :isSelectionMode="isSelectionMode"
+      :selectedCount="selectedIds.length"
+      @exit="$emit('exit')"
+      @cancel-selection="cancelSelection"
+      @open-debug="showDebugPanel = true"
+      @open-settings="showSettings = true"
+    />
 
-        <template v-for="msg in messages" :key="msg.id">
-          <!-- 拦截内嵌的好友申请消息，渲染成特殊卡片 -->
-          <div v-if="msg.type === 'reveal_request'" class="reveal-request-card">
-             <div class="icon"><i class="fas fa-heartbeat"></i></div>
-             <div class="text">{{ msg.content }}</div>
-             <button class="btn-handle" @click="showRevealModal = true">点击处理</button>
-          </div>
-          
-          <!-- 核心修复：接上重试与转账的事件监听 -->
-          <ChatMessageItem 
-            v-else
-            :msg="msg"
-            :chat="pseudoChatObj"
-            :isSelectionMode="false"
-            :isSelected="false"
-            :showTime="false"
-            @press="startPress"
-            @clear-press="clearPress"
-            @toggle-voice="(m) => { m.showText = !m.showText }"
-            @retry-msg="handleRetry"
-            @transfer-action="handleTransferAction"
-          />
-        </template>
-
-        <div v-if="isWaiting" class="msg-row is-ai">
-          <div class="msg-avatar">?</div>
-          <div class="msg-content-wrapper">
-            <div class="msg-bubble">
-              <i class="fas fa-circle-notch fa-spin"></i>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 底部输入框 -->
-      <ChatBottomBar 
-        v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
-        :chat="pseudoChatObj"
-        :musicState="{}"
-        :isSelectionMode="false"
-        :quotingText="quotingText"
-        @send-text="handleSendText"
-        @send-sticker="sendSticker"
-        @trigger-ai="triggerAiReply"
-        @open-alert="openMenuAlert"
-        @clear-quote="quotingText = ''"
-        @open-memory="handleRestricted('memory')"
-        @start-offline="handleRestricted('offline')"
-        @open-summary="showSummaryPanel = true"
-      />
-
-      <!-- 长按菜单与通用弹窗 -->
-      <ChatActionSheet v-model:show="actionSheet.show" :msg="actionSheet.msg" @quote="handleQuote" @edit="handleEditOwnMsg" @recall="handleRecallOwn" />
-      <ChatGeneralAlerts v-model:apiErrorDetails="apiErrorDetails" v-model:pendingAutoSummary="pendingAutoSummary" :alert="alert" :chatTitle="pseudoChatObj.title" @close-alert="alert.show = false" @confirm-general="handleAlertConfirm" />
-
-      <!-- 核心修复：拥有丰富信息的简单档案卡片 -->
-      <div class="simple-profile-mask" v-if="showSimpleProfile" @click.self="showSimpleProfile = false">
-        <div class="simple-profile-box">
-          <div class="sp-avatar">?</div>
-          <div class="sp-name">{{ chatProfile?.nickname || '匿名网友' }}</div>
-          <div class="sp-basic">{{ chatProfile?.age || '?' }}岁 / {{ chatProfile?.gender || '?' }}</div>
-          <div class="sp-tags">
-            <span v-for="(t, i) in chatProfile?.fullJson?.tag || []" :key="i">{{ t }}</span>
-          </div>
-          
-          <!-- 读取扩写后的人设外在表现与外貌 -->
-          <div class="sp-bio">
-            <span class="sp-bio-title">社交宣言 / 面具</span>
-            <div class="sp-bio-text">"{{ chatProfile?.fullJson?.personality?.public_persona || '这家伙很神秘，什么都没写' }}"</div>
-            
-            <span class="sp-bio-title">外貌印象</span>
-            <div class="sp-bio-text" style="font-style: normal; margin-bottom: 0;">{{ chatProfile?.fullJson?.appearance || '未知' }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 权限拦截弹窗 -->
-      <div class="restricted-modal-mask" v-if="restrictedAlert.show" @click.self="restrictedAlert.show = false">
-        <div class="restricted-box">
-          <div class="r-icon" :class="restrictedAlert.type"><i :class="restrictedAlert.icon"></i></div>
-          <h3>{{ restrictedAlert.title }}</h3>
-          <p>{{ restrictedAlert.desc }}</p>
-          <button class="r-btn" @click="restrictedAlert.show = false">我知道了</button>
-        </div>
-      </div>
-
-      <!-- 揭晓确认弹窗 -->
-      <div class="reveal-modal" v-if="showRevealModal">
-        <div class="reveal-box">
-          <div class="reveal-icon"><i class="fas fa-heartbeat"></i></div>
-          <h3>好感度已达标</h3>
-          <p>对方请求与你交换真实身份，是否发送好友验证？</p>
-          <div class="reveal-actions">
-            <button class="btn-reject" @click="handleRejectReveal">狠心拒绝</button>
-            <button class="btn-accept" @click="handleAcceptReveal">发送验证</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 挂载 QQ 的终端与总结面板 -->
-      <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
-      <SummaryPanel :show="showSummaryPanel" :chat="pseudoChatObj" @close="showSummaryPanel = false" />
-
+    <div v-if="pendingRequestId" style="background: #fff8e6; color: #d35400; padding: 10px 15px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 10; border-bottom: 1px solid #ffeaa7;">
+      <span style="display:flex; align-items:center; gap:6px;"><i class="fas fa-bell"></i> 对方发来了好友验证请求</span>
+      <button style="background: #d35400; color: #fff; border: none; border-radius: 6px; padding: 5px 12px; font-size: 11px; cursor: pointer; font-weight: 600;" @click="handleAcceptFriend">去通过</button>
     </div>
-  </transition>
+
+    <div class="chat-area" ref="chatBox" :style="chat.bgImage ? { backgroundImage: `url(${chat.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
+      <div v-if="chat.bgImage" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.2); pointer-events:none; z-index:0;"></div>
+
+      <template v-for="(msg, index) in visibleMessages" :key="msg.id">
+        <ChatMessageItem 
+          :msg="msg"
+          :chat="chat"
+          :isSelectionMode="isSelectionMode"
+          :isSelected="selectedIds.includes(msg.id)"
+          :showTime="index === 0 || (msg.timestamp || Math.floor(msg.id)) - (visibleMessages[index-1].timestamp || Math.floor(visibleMessages[index-1].id)) > 5*60*1000"
+          @toggle-select="toggleSelect"
+          @press="startPress"
+          @clear-press="clearPress"
+          @click-transfer="handleTransferClick"
+          @click-music-share="handleMusicShareClick"
+          @click-colisten="handleColistenReqClick"
+          @view-recall="viewRecall"
+          @toggle-voice="(m) => { m.showText = !m.showText }"
+          @click-avatar="handleAvatarClick"
+        />
+      </template>
+
+      <div v-if="isWaiting" class="msg-row is-ai" style="position:relative; z-index:1; width:100%;">
+        <div class="msg-avatar" :style="getAiAvatarStyle()">{{ getAiAvatarInitials() }}</div>
+        <div class="msg-content-wrapper">
+          <div class="msg-bubble">
+            <i class="fas fa-circle-notch fa-spin"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="chat.isBlocked" style="padding:15px; text-align:center; color:#888; font-size:13px; background:#f4f5f7; z-index:20; box-shadow:0 -2px 10px rgba(0,0,0,0.05);">
+      <div style="margin-bottom:12px;">你已将对方拉黑，<span style="color:#5c8aff; cursor:pointer;" @click="chat.isBlocked = false">点击解除</span></div>
+      <button class="btn-send" style="padding:8px 20px; font-size:12px; border-radius:12px; font-weight:600;" @click="triggerAiReply">
+        <i class="fas fa-eye"></i> 视奸 (唤起对方动作)
+      </button>
+    </div>
+    
+    <div v-if="chat.isBlockedByAi" style="padding:10px 15px; text-align:center; background:#fff2f2; z-index:20; border-top: 1px solid #ffcccc; display:flex; justify-content:center; gap:10px;">
+      <button style="padding:6px 12px; font-size:12px; border-radius:12px; background:#ff5252; color:#fff; border:none; font-weight:600;" @click="sendFriendRequestToAi">
+        <i class="fas fa-user-plus"></i> 发送好友申请
+      </button>
+      <button style="padding:6px 12px; font-size:12px; border-radius:12px; background:#fff; color:#666; border:1px solid #ddd;" @click="triggerAiReply">
+        <i class="fas fa-hourglass-half"></i> 等待对方动作...
+      </button>
+    </div>
+
+    <ChatBottomBar 
+      v-show="!chat.isBlocked"
+      :chat="chat"
+      :musicState="musicState"
+      :isSelectionMode="isSelectionMode"
+      :quotingText="quotingText"
+      @send-text="handleSendText"
+      @send-sticker="sendSticker"
+      @trigger-ai="triggerAiReply"
+      @delete-selected="deleteSelected"
+      @open-alert="openMenuAlert"
+      @open-local-music="showLocalMusicPicker = true"
+      @open-memory="showMemoryPanel = true"
+      @open-summary="showSummaryPanel = true"
+      @reroll="handleReRoll"
+      @toggle-colisten="toggleColistenFromMenu"
+      @clear-quote="quotingText = ''"
+      @start-offline="startOfflineMeeting"
+    />
+
+    <ChatMusicModals 
+      v-model:activeMusicCard="activeMusicCard"
+      v-model:showLocalMusicPicker="showLocalMusicPicker"
+      v-model:showColistenAlert="showColistenAlert"
+      :resolvingMusic="resolvingMusic"
+      :resolvedMusicData="resolvedMusicData"
+      :musicState="musicState"
+      :chatTitle="chat.title"
+      @play-resolved="playResolvedMusic"
+      @add-resolved="addResolvedMusicToQueue"
+      @send-music-share="sendMusicShare"
+      @reply-colisten="replyColisten"
+    />
+
+    <ChatGeneralAlerts 
+      v-model:apiErrorDetails="apiErrorDetails"
+      v-model:pendingAutoSummary="pendingAutoSummary"
+      :alert="alert"
+      :chatTitle="chat.title"
+      @close-alert="alert.show = false"
+      @copy-error="copyErrorJson"
+      @confirm-transfer="confirmReceiveTransfer"
+      @confirm-general="handleAlertConfirm"
+      @confirm-summary="confirmAutoSummary"
+      @confirm-meeting="handleMeetingConfirm"
+    />
+
+    <ChatActionSheet 
+      v-model:show="actionSheet.show"
+      :msg="actionSheet.msg"
+      @quote="handleQuote"
+      @edit="handleEditOwnMsg"
+      @recall="handleRecallOwn"
+      @multi-select="isSelectionMode = true"
+    />
+
+    <MemoryPanel :show="showMemoryPanel" :chat="chat" @close="showMemoryPanel = false" />
+    <ChatSettingsPage :show="showSettings" :chat="chat" @close="showSettings = false" @edit-character="(id) => { showSettings = false; $emit('edit-character', id); }" />
+    <DebugPanel :show="showDebugPanel" :logData="apiLog" @close="showDebugPanel = false" />
+    <SummaryPanel :show="showSummaryPanel" :chat="chat" @close="showSummaryPanel = false" />
+    <StatusPanel :show="showStatusPanel" :msg="activeStatusMsg" :chat="chat" @close="showStatusPanel = false" />
+
+  </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
-import db from '@/db'
+import { ref, nextTick, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { usePromptOrder } from '@/composables/usePromptOrder'
 import { useChatSessions } from '@/composables/useChatSessions'
+import { useProfile } from '@/composables/useProfile'
 import { useCharacters } from '@/composables/useCharacters'
-import { useDatingMatch } from '@/composables/useDatingMatch'
-import { useDatingPlayer } from '@/composables/useDatingPlayer'
+import { useMusic } from '@/composables/useMusic' 
+import { useMusicApi } from '@/composables/useMusicApi'
+import { useMemorySettings } from '@/composables/useMemorySettings'
 
-import ChatMessageItem from '@/apps/qq/components/ChatMessageItem.vue'
-import ChatBottomBar from '@/apps/qq/components/ChatBottomBar.vue'
-import ChatActionSheet from '@/apps/qq/components/ChatActionSheet.vue'
-import ChatGeneralAlerts from '@/apps/qq/components/ChatGeneralAlerts.vue'
-import DebugPanel from '@/apps/qq/DebugPanel.vue'
-import SummaryPanel from '@/apps/qq/SummaryPanel.vue'
+import ChatMessageItem from './components/ChatMessageItem.vue'
+import ChatBottomBar from './components/ChatBottomBar.vue'
+import ChatHeader from './components/ChatHeader.vue'
+import ChatActionSheet from './components/ChatActionSheet.vue'
+import ChatMusicModals from './components/ChatMusicModals.vue'
+import ChatGeneralAlerts from './components/ChatGeneralAlerts.vue'
 
-const props = defineProps({ show: Boolean, chatId: Number })
-const emit = defineEmits(['close'])
+import MemoryPanel from './MemoryPanel.vue'
+import ChatSettingsPage from './ChatSettingsPage.vue'
+import DebugPanel from './DebugPanel.vue'
+import SummaryPanel from './SummaryPanel.vue'
+import StatusPanel from './StatusPanel.vue'
+
+const props = defineProps({ 
+  chat: { type: Object, required: true } 
+})
+
+const emit = defineEmits(['exit', 'edit-character'])
 
 const { apiUrl, apiKey, apiModel } = useApi()
 const { buildApiMessages } = usePromptOrder()
-const { createSession, addMemory, addFriendRequest } = useChatSessions()
-const { getEmptyCharacter, saveCharacter } = useCharacters()
-const { getDatingAnonymityRule, parseAIAction } = useDatingMatch()
-const { playerProfile } = useDatingPlayer()
-
-const chatData = ref(null)
-const chatProfile = ref(null)
-const messages = ref([])
+const { activeMessages, activeDiaries, loadSessionData, pushMessage, updateMessage, removeMessages, addMemory, addStructuredMemory, addStructuredMemoriesForCharacters, addDiary, getDiariesByCharacter, archiveDiaries, activeMemories, addFriendRequest, friendRequests, acceptFriendRequest } = useChatSessions()
+const { userProfile } = useProfile()
+const { getCharById } = useCharacters()
+const { musicState, loadSong, toggleCoListen, playSpecific } = useMusic()
+const { resolveBestMatch } = useMusicApi()
+const { getMemorySettings } = useMemorySettings()
 
 const isWaiting = ref(false)
 const chatBox = ref(null)
-const showRevealModal = ref(false)
-const showSimpleProfile = ref(false)
+
+const showSettings = ref(false)
+const showMemoryPanel = ref(false)
 const showDebugPanel = ref(false)
 const showSummaryPanel = ref(false)
+const showLocalMusicPicker = ref(false)
+const showColistenAlert = ref(false)
+const apiErrorDetails = ref(null)
+
+const showStatusPanel = ref(false)
+const activeStatusMsg = ref(null)
 
 const quotingText = ref('')
-const alert = ref({ show: false, type: '', title: '', desc: '', inputs: null })
-const apiErrorDetails = ref(null)
-const pendingAutoSummary = ref(null)
 const apiLog = ref({ req: null, res: null, reqTokens: 0, resTokens: 0, time: '' })
+const pendingAutoSummary = ref(null)
+const pendingAutoSummaryPayload = ref(null)
 
-const restrictedAlert = ref({ show: false, title: '', desc: '', icon: '', type: '' })
+const pendingRequestId = computed(() => {
+  const req = friendRequests.value.find(r => r.chatId === props.chat.id)
+  return req ? req.id : null
+})
+
+const handleAcceptFriend = () => {
+  if (pendingRequestId.value) {
+    acceptFriendRequest(pendingRequestId.value)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已通过好友验证并解除拉黑' }))
+  }
+}
+
+const handleOfflineEnded = (e) => {
+  if (e.detail && e.detail.chatId === props.chat.id) {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：你结束了与对方的线下见面，记忆已归档]' })
+    scrollToBottom()
+  }
+}
+
+onMounted(async () => { 
+  await loadSessionData(props.chat.id)
+  scrollToBottom()
+  window.addEventListener('offline-meeting-ended', handleOfflineEnded)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('offline-meeting-ended', handleOfflineEnded)
+})
+
+watch(() => props.chat.id, async (newId) => { 
+  await loadSessionData(newId)
+  scrollToBottom()
+})
+
+const visibleMessages = computed(() => { 
+  const limit = Number(props.chat.settings?.renderMessageCount) || 50
+  return activeMessages.value.slice(-limit) 
+})
+
+const scrollToBottom = () => {
+  nextTick(() => { 
+    if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight 
+  })
+}
+
+watch(() => visibleMessages.value.length, scrollToBottom)
+
+const getAiAvatarStyle = () => {
+  if (props.chat.overrideAvatar) {
+    return `background-image: url(${props.chat.overrideAvatar})`
+  }
+  if (!props.chat.isGroup && props.chat.participants.length > 0) {
+    const liveChar = getCharById(props.chat.participants[0].id)
+    if (liveChar && liveChar.avatar) {
+      return `background-image: url(${liveChar.avatar})`
+    }
+  }
+  return ''
+}
+
+const getAiAvatarInitials = () => {
+  if (props.chat.overrideAvatar || (!props.chat.isGroup && getCharById(props.chat.participants[0]?.id)?.avatar)) {
+    return ''
+  }
+  return props.chat.title ? props.chat.title.charAt(0) : 'A'
+}
+
+const buildRegexSafe = (patternStr) => {
+  if (!patternStr) return null;
+  let flags = '';
+  let pattern = patternStr;
+  const match = patternStr.match(/^\/(.+)\/([a-z]*)$/s);
+  if (match) {
+    pattern = match[1];
+    flags = match[2];
+  } else if (patternStr.includes('\\\\[')) {
+    pattern = pattern.replace(/\\\\/g, '\\');
+  }
+  try {
+    return new RegExp(pattern, flags);
+  } catch(e) {
+    return null;
+  }
+}
+
+const handleAvatarClick = (clickedMsg) => {
+  if (clickedMsg.role === 'ai') {
+    let targetMsg = clickedMsg;
+    const regex = buildRegexSafe(props.chat.settings?.regexPattern);
+    
+    if (regex) {
+      const aiMsgs = activeMessages.value.filter(m => m.role === 'ai');
+      for (let i = aiMsgs.length - 1; i >= 0; i--) {
+        const textToTest = aiMsgs[i].rawStatus || aiMsgs[i].content || '';
+        if (textToTest.match(regex)) {
+          targetMsg = aiMsgs[i];
+          break;
+        }
+      }
+    }
+    
+    activeStatusMsg.value = targetMsg;
+    showStatusPanel.value = true;
+  }
+}
+
+const startOfflineMeeting = () => {
+  window.dispatchEvent(new CustomEvent('open-offline-meeting', { detail: { chat: props.chat } }))
+}
+
+const handleMeetingConfirm = (accept) => {
+  if (accept) {
+    startOfflineMeeting()
+  } else {
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '你拒绝了线下见面邀请' })
+  }
+  alert.value.show = false
+  scrollToBottom()
+}
+
+const sendFriendRequestToAi = () => {
+  const txt = prompt('输入你想对TA说的验证消息：', '我是...')
+  if (txt !== null) {
+    pushMessage(props.chat.id, { role: 'user', type: 'text', content: `[发起好友验证]：${txt}` })
+    scrollToBottom()
+    setTimeout(() => { triggerAiReply() }, 800)
+  }
+}
+
+const handleSendText = (txt) => {
+  const msgObj = { 
+    role: 'user', 
+    type: quotingText.value ? 'quote' : 'text', 
+    content: txt 
+  }
+  if (quotingText.value) {
+    msgObj.refText = quotingText.value
+  }
+  if (props.chat.isBlockedByAi) {
+    msgObj.isFailed = true
+  }
+  pushMessage(props.chat.id, msgObj)
+  quotingText.value = ''
+  scrollToBottom()
+}
+
+const sendSticker = (name) => { 
+  const msgObj = { role: 'user', type: 'sticker', content: name }
+  if (props.chat.isBlockedByAi) msgObj.isFailed = true
+  pushMessage(props.chat.id, msgObj)
+  scrollToBottom() 
+}
+
+const sendMusicShare = (song) => { 
+  const msgObj = { 
+    role: 'user', 
+    type: 'music_share', 
+    name: song.name, 
+    artist: song.artist, 
+    content: '我想和你分享这首歌~' 
+  }
+  if (props.chat.isBlockedByAi) msgObj.isFailed = true
+  pushMessage(props.chat.id, msgObj)
+  showLocalMusicPicker.value = false
+  scrollToBottom() 
+}
+
+const activeMusicCard = ref(null)
+const resolvingMusic = ref(false)
+const resolvedMusicData = ref(null)
+
+const handleMusicShareClick = async (msg) => {
+  activeMusicCard.value = msg
+  resolvingMusic.value = true
+  resolvedMusicData.value = null
+  try { 
+    const res = await resolveBestMatch(msg.name, msg.artist)
+    if (res) {
+      resolvedMusicData.value = { ...res, name: msg.name, artist: msg.artist } 
+    }
+  } catch (e) { 
+    console.error(e) 
+  } finally { 
+    resolvingMusic.value = false 
+  }
+}
+
+const playResolvedMusic = () => {
+  if (resolvedMusicData.value) {
+    musicState.playlist.splice(musicState.currentIndex + 1, 0, resolvedMusicData.value)
+    musicState.currentIndex++
+    loadSong(resolvedMusicData.value, true)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已开始播放' }))
+  }
+  activeMusicCard.value = null
+}
+
+const addResolvedMusicToQueue = () => {
+  if (resolvedMusicData.value) {
+    musicState.playlist.splice(musicState.currentIndex + 1, 0, resolvedMusicData.value)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已加入播放队列' }))
+  }
+  activeMusicCard.value = null
+}
+
+const toggleColistenFromMenu = () => { 
+  toggleCoListen(props.chat.id)
+  pushMessage(props.chat.id, { 
+    role: 'system', 
+    type: 'text', 
+    content: musicState.coListenCharId === props.chat.id ? '你已开启一起听羁绊' : '你断开了羁绊' 
+  }) 
+}
+
+const handleColistenReqClick = () => { 
+  showColistenAlert.value = true 
+}
+
+const replyColisten = (accept) => {
+  if (accept) { 
+    toggleCoListen(props.chat.id)
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你接受了一起听邀请，并与对方连接同频]' }) 
+  } else { 
+    pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[你直接拒绝了对方的一起听邀请]' }) 
+  }
+  showColistenAlert.value = false
+}
 
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
 
-watch(() => props.show, async (val) => {
-  if (val && props.chatId) {
-    chatData.value = await db.dating_chats.get(props.chatId)
-    if (chatData.value) {
-      chatProfile.value = await db.dating_profiles.get(chatData.value.profileId)
-      messages.value = await db.messages.where({ sessionId: `dating_${props.chatId}` }).toArray()
-      scrollToBottom()
-    }
-  } else {
-    chatData.value = null
-    chatProfile.value = null
-    messages.value = []
+const startPress = (msg) => { 
+  if (!isSelectionMode.value) {
+    pressTimer = setTimeout(() => { 
+      actionSheet.value = { show: true, msg } 
+    }, 500) 
   }
-})
+}
 
-const pseudoChatObj = computed(() => {
-  if (!chatProfile.value) return { title: '加载中...', settings: {} }
-  const fakeChar = {
-    id: `dating_char_${chatProfile.value.id}`,
-    name: chatProfile.value.nickname,
-    description: JSON.stringify(chatProfile.value.fullJson, null, 2),
-    advancedSettingsEnabled: false
-  }
-  return {
-    id: `dating_${props.chatId}`,
-    title: chatProfile.value.nickname,
-    isGroup: false,
-    participants: [fakeChar],
-    overrideAvatar: '',
-    settings: { 
-      contextMessageCount: 20, 
-      autoSummaryCount: 0, 
-      promptSuffix: getDatingAnonymityRule(chatProfile.value) 
-    },
-    variablesState: {},
-    isBlocked: false,
-    isBlockedByAi: false
-  }
-})
+const clearPress = () => { 
+  if (pressTimer) clearTimeout(pressTimer) 
+}
 
-const scrollToBottom = () => { nextTick(() => { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }) }
+const handleQuote = () => { 
+  quotingText.value = actionSheet.value.msg.content
+}
 
-// --- 气泡交互逻辑 ---
-const startPress = (msg) => { pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
-const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
-const handleQuote = () => { quotingText.value = actionSheet.value.msg.content }
-const handleEditOwnMsg = async () => { 
+const handleEditOwnMsg = () => { 
   const newText = prompt('编辑消息：', actionSheet.value.msg.content)
   if (newText) {
-    await db.messages.where({ id: actionSheet.value.msg.id }).modify({ content: newText })
-    const msg = messages.value.find(m => m.id === actionSheet.value.msg.id)
-    if (msg) msg.content = newText
+    updateMessage(props.chat.id, actionSheet.value.msg.id, { content: newText })
   }
 }
-const handleRecallOwn = async () => { 
-  await db.messages.where({ id: actionSheet.value.msg.id }).modify({ type: 'recalled', oldContent: actionSheet.value.msg.content })
-  const msg = messages.value.find(m => m.id === actionSheet.value.msg.id)
-  if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
-}
 
-// 核心修复 1: 实现重 Roll 逻辑
-const handleRetry = async (msg) => {
-  // 删除被点击的 AI 消息
-  await db.messages.where({ id: msg.id }).delete()
-  messages.value = messages.value.filter(m => m.id !== msg.id)
-  // 重新触发 AI 生成
-  triggerAiReply()
-}
-
-// 核心修复 2: 实现转账点击逻辑 (领钱 / 退钱)
-const handleTransferAction = async (msg, action) => {
-  if (msg.status !== 'pending') return
-  
-  const newStatus = action === 'accept' ? 'accepted' : 'rejected'
-  await db.messages.where({ id: msg.id }).modify({ status: newStatus })
-  
-  const m = messages.value.find(x => x.id === msg.id)
-  if (m) m.status = newStatus
-  
-  await pushLocalMessage({ 
-    role: 'system', 
-    type: 'text', 
-    content: action === 'accept' ? `你已领取了对方的转账 ￥${msg.amount}` : `你已退回了对方的转账` 
+const handleRecallOwn = () => { 
+  updateMessage(props.chat.id, actionSheet.value.msg.id, { 
+    type: 'recalled', 
+    oldContent: actionSheet.value.msg.content 
   })
-  
-  // 领钱或退钱后，让 AI 做个反应
-  triggerAiReply()
 }
 
-// --- 底栏受限拦截 ---
-const handleRestricted = (type) => {
-  if (type === 'memory') {
-    restrictedAlert.value = {
-      show: true, type: 'memory',
-      title: '记忆库锁定',
-      desc: '匿名模式下，你无法偷窥对方的精神记忆库。保持一点神秘感不好吗？',
-      icon: 'fas fa-lock'
-    }
-  }
-  if (type === 'offline') {
-    restrictedAlert.value = {
-      show: true, type: 'offline',
-      title: '安全中心提醒',
-      desc: '网警提醒您：网络交友需谨慎！\n匿名模式下严禁线下奔现，请先交换真实身份并加为好友。',
-      icon: 'fas fa-shield-alt'
-    }
+const isSelectionMode = ref(false)
+const selectedIds = ref([])
+
+const cancelSelection = () => { 
+  isSelectionMode.value = false
+  selectedIds.value = [] 
+}
+
+const toggleSelect = (id) => { 
+  if (!isSelectionMode.value) return
+  const idx = selectedIds.value.indexOf(id)
+  if (idx > -1) {
+    selectedIds.value.splice(idx, 1)
+  } else {
+    selectedIds.value.push(id) 
   }
 }
 
-const handleDisconnect = async () => {
-  if(confirm('确定要彻底断开连接并销毁该聊天数据吗？\n(对方将永远从列表中消失)')) {
-    await db.dating_chats.delete(props.chatId)
-    await db.dating_profiles.delete(chatData.value.profileId)
-    await db.messages.where({ sessionId: `dating_${props.chatId}` }).delete()
-    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已彻底断开通信链路' }))
-    emit('close')
-  }
+const deleteSelected = () => { 
+  if (confirm(`确认删除选中的 ${selectedIds.length} 条消息吗？`)) { 
+    removeMessages(props.chat.id, selectedIds.value)
+    cancelSelection() 
+  } 
 }
 
-const pushLocalMessage = async (msgObj) => {
-  const fullMsg = { ...msgObj, timestamp: Date.now(), id: Date.now() + Math.random(), sessionId: `dating_${props.chatId}` }
-  await db.messages.add(fullMsg)
-  messages.value.push(fullMsg)
-  scrollToBottom()
-  if (chatData.value && fullMsg.role === 'user') {
-    chatData.value.messageCount += 1
-    await db.dating_chats.update(props.chatId, { messageCount: chatData.value.messageCount })
-  }
+const viewRecall = (oldContent) => { 
+  alert.value = { 
+    show: true, 
+    type: 'view_recall', 
+    title: '撤回的内容', 
+    desc: oldContent, 
+    inputs: null 
+  } 
 }
 
-const handleSendText = async (txt) => {
-  const msgObj = { role: 'user', type: quotingText.value ? 'quote' : 'text', content: txt }
-  if (quotingText.value) msgObj.refText = quotingText.value
-  await pushLocalMessage(msgObj)
-  quotingText.value = ''
-}
+const alert = ref({ show: false, type: '', title: '', desc: '', inputs: null })
 
-const sendSticker = async (name) => {
-  await pushLocalMessage({ role: 'user', type: 'sticker', content: name })
-}
-
-const openMenuAlert = (type) => { 
+const openMenuAlert = (type) => {
   alert.value.type = type
-  if (type === 'transfer') {
+  alert.value.desc = ''
+  if (type === 'transfer') { 
     alert.value.title = '发起转账'
-    alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }]
-  } else if (type === 'location') {
+    alert.value.inputs = [{ placeholder: '金额 (￥)', value: '' }, { placeholder: '备注 (选填)', value: '' }] 
+  } else if (type === 'location') { 
     alert.value.title = '发送位置'
-    alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }]
-  } else if (type === 'voice') {
+    alert.value.inputs = [{ placeholder: '如：市中心广场', value: '' }] 
+  } else if (type === 'voice') { 
     alert.value.title = '发送伪语音'
-    alert.value.inputs = [{ placeholder: '你想说的话', value: '' }]
-  } else if (type === 'image') {
+    alert.value.inputs = [{ placeholder: '你想说的话', value: '' }] 
+  } else if (type === 'image') { 
     alert.value.title = '发送伪图片'
-    alert.value.inputs = [{ placeholder: '视觉描述', value: '' }]
+    alert.value.inputs = [{ placeholder: '视觉描述', value: '' }] 
   }
-  alert.value.show = true 
+  alert.value.show = true
 }
 
-const handleAlertConfirm = async () => { 
+const handleAlertConfirm = () => {
   const t = alert.value.type
   const vals = alert.value.inputs.map(i => i.value)
   const baseObj = { role: 'user' }
+  if (props.chat.isBlockedByAi) baseObj.isFailed = true
   
   if (t === 'transfer' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
+    pushMessage(props.chat.id, { ...baseObj, type: 'transfer', amount: vals[0], content: vals[1] || '转账', status: 'pending' })
   } else if (t === 'location' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'location', content: vals[0] })
+    pushMessage(props.chat.id, { ...baseObj, type: 'location', content: vals[0] })
   } else if (t === 'voice' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'voice', content: vals[0], showText: false })
+    pushMessage(props.chat.id, { ...baseObj, type: 'voice', content: vals[0], showText: false })
   } else if (t === 'image' && vals[0]) {
-    await pushLocalMessage({ ...baseObj, type: 'image', content: vals[0] })
+    pushMessage(props.chat.id, { ...baseObj, type: 'image', content: vals[0] })
   }
-  alert.value.show = false 
+  alert.value.show = false
+  scrollToBottom()
+}
+
+let activeTransferMsg = null
+const handleTransferClick = (msg) => {
+  if (msg.status !== 'pending' || msg.role === 'user') return
+  activeTransferMsg = msg
+  alert.value = { 
+    show: true, 
+    type: 'receive_transfer', 
+    title: `来自 ${props.chat.title} 的转账`, 
+    desc: `金额：￥${msg.amount}\n备注：${msg.content || '无'}`, 
+    inputs: null 
+  }
+}
+
+const confirmReceiveTransfer = (action) => {
+  if (!activeTransferMsg) return
+  updateMessage(props.chat.id, activeTransferMsg.id, { status: action === 'accept' ? 'accepted' : 'rejected' })
+  pushMessage(props.chat.id, { role: 'system', type: 'text', content: action === 'accept' ? '你已领取转账' : '你已退回转账' })
+  pushMessage(props.chat.id, { role: 'user', type: 'transfer_reply', content: '', action: action })
+  alert.value.show = false
+  scrollToBottom()
+}
+
+const handleReRoll = () => {
+  if (isWaiting.value) return 
+  
+  let lastUserIdx = -1
+  for (let i = activeMessages.value.length - 1; i >= 0; i--) { 
+    if (activeMessages.value[i].role === 'user') { 
+      lastUserIdx = i
+      break
+    } 
+  }
+  
+  if (lastUserIdx !== -1 && lastUserIdx < activeMessages.value.length - 1) {
+    const idsToDelete = activeMessages.value.slice(lastUserIdx + 1).map(m => m.id)
+    removeMessages(props.chat.id, idsToDelete)
+    
+    setTimeout(() => {
+      triggerAiReply()
+    }, 150)
+  } else {
+    triggerAiReply()
+  }
+}
+
+const extractJsonString = (text) => {
+  if (!text) return null
+  let t = text.trim()
+  const fence = t.match(/```json([\s\S]*?)```/i)
+  if (fence) t = fence[1].trim()
+  if (t.startsWith('{') && t.endsWith('}')) return t
+  const first = t.indexOf('{')
+  const last = t.lastIndexOf('}')
+  if (first !== -1 && last !== -1 && last > first) return t.slice(first, last + 1)
+  return null
+}
+
+const parseMemoryJson = (rawText) => {
+  const jsonStr = extractJsonString(rawText)
+  if (!jsonStr) return null
+  try {
+    return JSON.parse(jsonStr)
+  } catch (e) {
+    return null
+  }
+}
+
+const normalizeParsedResult = (parsed, fallbackSource) => {
+  if (!parsed) return { memories: [], diary: null }
+  const core = Array.isArray(parsed.core_updates) ? parsed.core_updates : []
+  const dynamic = Array.isArray(parsed.dynamic_events) ? parsed.dynamic_events : []
+  const all = [...core, ...dynamic]
+
+  const memories = all.map(m => {
+    const t = m || {}
+    let cid = t.character_id || t.characterId || null
+    if (cid === '') cid = null
+    return {
+      characterId: cid,
+      type: t.type || 'event',
+      content: t.content || t.text || '',
+      importance: Number(t.importance || 1),
+      weight: Number(t.weight || t.importance || 1),
+      keywords: Array.isArray(t.keywords) ? t.keywords : [],
+      source: t.source || fallbackSource,
+      timestamp: t.timestamp || Date.now(),
+      date: t.date || new Date().toLocaleString()
+    }
+  }).filter(m => m.content && m.content.trim())
+
+  let diary = null
+  if (parsed.diary && (parsed.diary.content || parsed.diary.text)) {
+    diary = {
+      content: parsed.diary.content || parsed.diary.text || '',
+      timestamp: parsed.diary.timestamp || Date.now(),
+      date: parsed.diary.date || new Date().toLocaleString(),
+      source: fallbackSource
+    }
+  } else if (parsed.diary_content) {
+    diary = {
+      content: parsed.diary_content,
+      timestamp: Date.now(),
+      date: new Date().toLocaleString(),
+      source: fallbackSource
+    }
+  }
+
+  return { memories, diary }
+}
+
+const getChatCharacterIds = () => {
+  if (!props.chat || !props.chat.participants) return []
+  return props.chat.participants.map(c => c.id).filter(Boolean)
+}
+
+const getPrimaryCharacterId = () => {
+  if (props.chat.participants && props.chat.participants[0]) return props.chat.participants[0].id
+  return null
+}
+
+const buildPreviewText = (normalized) => {
+  if (normalized.diary && normalized.diary.content) return normalized.diary.content
+  if (!normalized.memories || normalized.memories.length === 0) return ''
+  return normalized.memories.map((m, i) => `${i + 1}. ${m.content}`).join('\n')
+}
+
+const applyDiaryAutoArchive = async (characterId, sessionId) => {
+  const settings = getMemorySettings(characterId)
+  if (!settings.diaryAutoArchiveEnabled) return
+
+  const allActive = await getDiariesByCharacter(characterId, false)
+  let candidates = allActive.filter(d => d.level === 1)
+  if (settings.diaryAutoIncludeL2) candidates = candidates.concat(allActive.filter(d => d.level === 2))
+  if (settings.diaryAutoIncludeL3) candidates = candidates.concat(allActive.filter(d => d.level === 3))
+
+  if (candidates.length < Number(settings.diaryAutoArchiveThreshold || 15)) return
+  if (!apiKey.value) return
+
+  const prompt = `${settings.diaryArchivePrompt}\n\n【起居注记录】\n` + candidates.map((d, i) => `${i + 1}. ${d.content}`).join('\n')
+  try {
+    const res = await fetch(apiUrl.value, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
+      body: JSON.stringify({ model: apiModel.value, messages: [{ role: 'user', content: prompt }] })
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    const content = data.choices[0].message?.content?.trim() || ''
+    if (content) {
+      await addDiary(sessionId, { characterId, content, level: Number(settings.diaryAutoTargetLevel || 2), type: 'summary', source: 'diary_auto', timestamp: Date.now(), date: new Date().toLocaleString(), isArchived: false })
+      await archiveDiaries(candidates.map(c => c.id))
+    }
+  } catch (e) {}
+}
+
+const handleDiaryRemind = async (characterId) => {
+  const settings = getMemorySettings(characterId)
+  const allActive = await getDiariesByCharacter(characterId, false)
+  const threshold = Number(settings.diaryRemindThreshold || 20)
+  if (allActive.length >= threshold) {
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '起居注未归档数量已达到提醒阈值' }))
+  }
+}
+
+const saveParsedSummary = async (normalized, diaryOverrideText, source) => {
+  const isGroup = props.chat.isGroup
+  const characterIds = getChatCharacterIds()
+  const defaultCid = getPrimaryCharacterId()
+
+  if (normalized.memories && normalized.memories.length > 0) {
+    for (const m of normalized.memories) {
+      const memObj = {
+        characterId: m.characterId,
+        type: m.type || 'event',
+        content: m.content,
+        importance: m.importance || 1,
+        weight: m.weight || m.importance || 1,
+        keywords: m.keywords || [],
+        source: m.source || source,
+        timestamp: m.timestamp || Date.now(),
+        date: m.date || new Date().toLocaleString()
+      }
+      if (isGroup && !memObj.characterId && characterIds.length > 0) {
+        await addStructuredMemoriesForCharacters(props.chat.id, characterIds, memObj)
+      } else {
+        if (!isGroup && !memObj.characterId && defaultCid) memObj.characterId = defaultCid
+        await addStructuredMemory(props.chat.id, memObj)
+      }
+    }
+  }
+
+  if (normalized.diary && (normalized.diary.content || diaryOverrideText)) {
+    const diaryText = diaryOverrideText && diaryOverrideText.trim() ? diaryOverrideText.trim() : normalized.diary.content
+    if (diaryText && diaryText.trim()) {
+      if (isGroup && characterIds.length > 0) {
+        for (const cid of characterIds) {
+          await addDiary(props.chat.id, { 
+            characterId: cid,
+            content: diaryText, 
+            timestamp: normalized.diary.timestamp || Date.now(),
+            date: normalized.diary.date || new Date().toLocaleString(),
+            source: source,
+            level: 1,
+            isArchived: false
+          })
+          await handleDiaryRemind(cid)
+          await applyDiaryAutoArchive(cid, props.chat.id)
+        }
+      } else {
+        const cid = defaultCid
+        await addDiary(props.chat.id, { 
+          characterId: cid,
+          content: diaryText, 
+          timestamp: normalized.diary.timestamp || Date.now(),
+          date: normalized.diary.date || new Date().toLocaleString(),
+          source: source,
+          level: 1,
+          isArchived: false
+        })
+        if (cid) {
+          await handleDiaryRemind(cid)
+          await applyDiaryAutoArchive(cid, props.chat.id)
+        }
+      }
+    }
+  }
+}
+
+const buildMemorySummaryPrompt = (basePrompt, diaryPrompt, historyText) => {
+  const source = props.chat.isGroup ? 'group_chat' : 'chat'
+  const now = new Date()
+  const timeStr = now.toLocaleString('zh-CN', { hour12: false })
+  let charInfo = ''
+  if (props.chat.isGroup && props.chat.participants && props.chat.participants.length > 0) {
+    charInfo = '群聊角色列表（必须用 character_id 归属）：\n' + props.chat.participants.map(c => `- ${c.name} (id: ${c.id})`).join('\n')
+  } else if (props.chat.participants && props.chat.participants[0]) {
+    charInfo = `当前角色 id: ${props.chat.participants[0].id}`
+  }
+
+  const diaryHint = diaryPrompt && diaryPrompt.trim() ? `\n\n【起居注风格要求】\n${diaryPrompt.trim()}\n` : ''
+
+  const schema = `请严格输出 JSON，不要输出任何其他文字。JSON 格式如下：
+{
+  "core_updates": [
+    {
+      "character_id": "",
+      "type": "core",
+      "content": "",
+      "importance": 1,
+      "weight": 1,
+      "keywords": [],
+      "source": "${source}",
+      "timestamp": 0,
+      "date": ""
+    }
+  ],
+  "dynamic_events": [
+    {
+      "character_id": "",
+      "type": "event",
+      "content": "",
+      "importance": 1,
+      "weight": 1,
+      "keywords": [],
+      "source": "${source}",
+      "timestamp": 0,
+      "date": ""
+    }
+  ],
+  "diary": {
+    "content": "",
+    "timestamp": 0,
+    "date": ""
+  }
+}
+
+类型说明：
+- core: 非常重要的事情
+- milestone: 阶段性大事
+- event: 普通事件
+
+要求：
+1. 如果没有内容，返回空数组。
+2. group_chat 必须填写 character_id。
+3. timestamp 为毫秒，date 使用本地可读时间。`
+
+  return `${basePrompt || ''}\n${diaryHint}\n当前时间：${timeStr}\n${charInfo ? charInfo + '\n' : ''}\n${schema}\n\n【近期对话记录】\n${historyText}`
+}
+
+const confirmAutoSummary = async () => {
+  if (!pendingAutoSummary.value) return
+  if (pendingAutoSummaryPayload.value) {
+    const source = props.chat.isGroup ? 'group_chat' : 'chat'
+    await saveParsedSummary(pendingAutoSummaryPayload.value, null, source)
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '自动总结已成功归档' }))
+    pendingAutoSummaryPayload.value = null
+    pendingAutoSummary.value = null
+    return
+  }
+  await addMemory(props.chat.id, { 
+    date: new Date().toLocaleString(), 
+    text: pendingAutoSummary.value 
+  })
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '自动总结已成功归档' }))
+  pendingAutoSummary.value = null
+}
+
+const checkAndRunAutoSummary = async () => {
+  const count = Number(props.chat.settings?.autoSummaryCount) || 0
+  if (count <= 0) return
+  
+  const aiMsgs = activeMessages.value.filter(m => m.role === 'ai')
+  if (aiMsgs.length > 0 && aiMsgs.length % count === 0) {
+    try {
+      const historyText = activeMessages.value.slice(-count * 2)
+        .filter(m => m.role !== 'system')
+        .map(m => `${m.role === 'ai' ? 'AI' : 'User'}: ${m.content}`)
+        .join('\n')
+
+      const primaryId = getPrimaryCharacterId()
+      const settings = primaryId ? getMemorySettings(primaryId) : getMemorySettings(null)
+      const basePrompt = settings.summaryPrompt || props.chat.settings.summaryPrompt
+      const diaryPrompt = settings.diaryPrompt || ''
+
+      const finalPrompt = buildMemorySummaryPrompt(basePrompt, diaryPrompt, historyText)
+      
+      const res = await fetch(apiUrl.value, { 
+        method: 'POST', 
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${apiKey.value}` 
+        }, 
+        body: JSON.stringify({ 
+          model: apiModel.value, 
+          messages: [{ role: 'user', content: finalPrompt }] 
+        }) 
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        const rawText = data.choices[0].message?.content?.trim() || ''
+        const parsed = parseMemoryJson(rawText)
+        const normalized = normalizeParsedResult(parsed, props.chat.isGroup ? 'group_chat' : 'chat')
+        const previewText = buildPreviewText(normalized)
+        
+        // 核心修改：把 JSON 字符串直接拼接到文本里展示在自动总结弹窗中
+        const jsonStr = extractJsonString(rawText) || rawText
+
+        if (previewText) {
+          pendingAutoSummary.value = `【提取内容预览】\n${previewText}\n\n【原始 JSON 返回】\n${jsonStr}`
+          pendingAutoSummaryPayload.value = normalized
+        } else if (rawText) {
+          pendingAutoSummary.value = rawText
+        }
+      }
+    } catch (e) { 
+      console.error('总结失败', e) 
+    }
+  }
+}
+
+const copyErrorJson = () => { 
+  navigator.clipboard.writeText(apiErrorDetails.value)
+  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '报错详情已复制' })) 
 }
 
 const triggerAiReply = async () => {
   if (isWaiting.value) return
   isWaiting.value = true
   scrollToBottom()
-  
-  try {
-    const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
-    apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: apiMessages, time: new Date().toLocaleTimeString() }
 
-    const res = await fetch(apiUrl.value, {
+  try {
+    if (!apiKey.value) throw new Error('未设置 API 密钥')
+    
+    const contextLimit = Number(props.chat.settings?.statusContextCount ?? 1);
+    let aiMsgCount = 0;
+    
+    const messagesForApi = activeMessages.value.map(m => ({ ...m }));
+    
+    for (let i = messagesForApi.length - 1; i >= 0; i--) {
+      const msg = messagesForApi[i];
+      if (msg.role === 'ai') {
+        if (msg.rawStatus) {
+          if (aiMsgCount < contextLimit) {
+            msg.content = msg.content + '\n\n' + msg.rawStatus;
+          }
+        }
+        aiMsgCount++;
+      }
+    }
+
+    const apiMessages = buildApiMessages(props.chat, messagesForApi, activeMemories.value, activeDiaries.value)
+    
+    apiLog.value.reqTokens = Math.ceil(apiMessages.map(m => m.content).join('').length / 4)
+    apiLog.value.req = JSON.parse(JSON.stringify(apiMessages))
+    apiLog.value.time = new Date().toLocaleTimeString()
+
+    const response = await fetch(apiUrl.value, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
-      body: JSON.stringify({ model: apiModel.value, messages: apiMessages, temperature: 0.85 })
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${apiKey.value}` 
+      },
+      body: JSON.stringify({ 
+        model: apiModel.value, 
+        messages: apiMessages 
+      })
     })
+
+    if (!response.ok) {
+      let errTxt = `API 拒绝访问: HTTP ${response.status} (${response.statusText})`;
+      try {
+        const errText = await response.text();
+        try {
+          const errObj = JSON.parse(errText);
+          if (errObj.error && errObj.error.message) {
+            errTxt += `\n\n【错误详情】\n${errObj.error.message}`;
+          } else {
+            errTxt += `\n\n【返回参数】\n${JSON.stringify(errObj, null, 2)}`;
+          }
+        } catch (e) {
+          if (errText) errTxt += `\n\n【原始报文】\n${errText}`;
+        }
+      } catch (e) {}
+      throw new Error(errTxt);
+    }
     
-    if (!res.ok) throw new Error('API 访问失败')
-    
-    const data = await res.json()
+    const data = await response.json()
     let rawText = data.choices[0].message?.content || ''
     
     apiLog.value.res = rawText
-    apiLog.value.resTokens = Math.ceil(rawText.length/4)
-    
-    rawText = rawText.replace(/<statue_update>([\s\S]*?)<\/statue_update>/gi, '').trim()
-    const parsedAction = parseAIAction(rawText)
-    rawText = parsedAction.cleanText
-    const action = parsedAction.action
+    apiLog.value.resTokens = Math.ceil(rawText.length / 4)
+
+    const statusRegex = /<statue_update>([\s\S]*?)<\/statue_update>/gi
+    let match
+    while ((match = statusRegex.exec(rawText)) !== null) {
+      const innerXml = match[1].trim()
+      const tagRegex = /<([^>]+)>([^<]+)<\/\1>/g
+      let tagMatch
+      while ((tagMatch = tagRegex.exec(innerXml)) !== null) {
+        props.chat.variablesState[tagMatch[1]] = tagMatch[2].trim()
+      }
+    }
+    rawText = rawText.replace(statusRegex, '').trim()
 
     const msgRegex = /<msg(?:[^>]*)>([\s\S]*?)<\/msg>/gi
     const matches = [...rawText.matchAll(msgRegex)]
+
     if (matches.length > 0) {
-      for (const m of matches) {
-        const type = (m[0].match(/type="([^"]+)"/) || [])[1] || 'text'
-        await pushLocalMessage({ role: 'ai', type, content: m[1].trim() })
-      }
+      const trailingText = rawText.replace(msgRegex, '').trim()
+      
+      matches.forEach((m, index) => {
+        const attrRegex = /(\w+)="([^"]+)"/g
+        let attrs = {}
+        let attrMatch
+        while ((attrMatch = attrRegex.exec(m[0])) !== null) {
+          attrs[attrMatch[1]] = attrMatch[2]
+        }
+        
+        const mType = attrs.type || 'text'
+        const mRef = attrs.ref || ''
+        const mAmount = attrs.amount || ''
+        const mAction = attrs.action || ''
+        const mName = attrs.name || ''
+        const mArtist = attrs.artist || ''
+        let mContent = m[1].trim()
+        
+        if (mType === 'sys_action') {
+          if (mAction === 'block') {
+            props.chat.isBlockedByAi = true
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：对方开启了好友验证，你还不是他(她)朋友。请先发送朋友验证请求，对方验证通过后，才能聊天。]' })
+          } else if (mAction === 'unblock') {
+            props.chat.isBlockedByAi = false
+            pushMessage(props.chat.id, { role: 'system', type: 'text', content: '[系统提示：对方已将你移出黑名单。]' })
+          } else if (mAction === 'invite_meeting') {
+            alert.value = {
+              show: true,
+              type: 'invite_meeting',
+              title: '线下邀约',
+              desc: `${props.chat.title} 突然邀请你线下见面，是否接受？`,
+              inputs: null
+            }
+          } else if (mAction === 'add_friend') {
+            addFriendRequest(props.chat.id, mContent)
+            window.dispatchEvent(new CustomEvent('sys-toast', { detail: '收到了一条新的好友申请验证' }))
+            if (props.chat.isBlocked) {
+              pushMessage(props.chat.id, { role: 'system', type: 'text', content: `[拦截的对方动作] 对方尝试发来好友验证请求：${mContent}` })
+            }
+          }
+          return 
+        }
+
+        if (props.chat.isBlocked && mType !== 'sys_action') {
+          if (mType === 'text') mContent = `[被系统拦截] ${mContent}`
+          else if (mType === 'voice') mContent = `[拦截的对方语音] ${mContent}`
+          else if (mType === 'image') mContent = `[拦截的对方图片] ${mContent}`
+          else if (mType === 'transfer') mContent = `[拦截的对方转账] ${mContent}`
+        }
+
+        const tempId = Date.now() + Math.random()
+        
+        const baseMsgObj = { id: tempId, role: 'ai', type: mType, refText: mRef, content: mContent }
+        if (index === matches.length - 1 && trailingText) {
+          baseMsgObj.rawStatus = trailingText;
+        }
+
+        if (mType === 'recall') {
+          pushMessage(props.chat.id, { ...baseMsgObj, type: 'recall_pending' })
+          setTimeout(() => { 
+            updateMessage(props.chat.id, tempId, { type: 'recalled', oldContent: mContent }) 
+          }, 1500)
+        } else if (mType === 'transfer') {
+          pushMessage(props.chat.id, { ...baseMsgObj, amount: mAmount, status: 'pending' })
+        } else if (mType === 'transfer_reply') {
+          const pendingMsg = activeMessages.value.slice().reverse().find(m => m.type === 'transfer' && m.status === 'pending')
+          if (pendingMsg) {
+            updateMessage(props.chat.id, pendingMsg.id, { status: mAction === 'accept' ? 'accepted' : 'rejected' })
+          }
+          pushMessage(props.chat.id, { role: 'system', type: 'text', content: mAction === 'accept' ? '对方已领取转账' : '对方已退回转账' })
+        } else if (mType === 'voice') {
+          pushMessage(props.chat.id, { ...baseMsgObj, showText: false })
+        } else if (mType === 'music_share' || mType === 'music_cmd') {
+          pushMessage(props.chat.id, { ...baseMsgObj, name: mName, artist: mArtist })
+          if (mType === 'music_cmd' && mAction === 'play' && mName) {
+            playSpecific({ name: mName, artist: mArtist })
+          }
+        } else if (mType === 'music_colisten_req') {
+          pushMessage(props.chat.id, { ...baseMsgObj, type: 'music_colisten_req' })
+        } else {
+          pushMessage(props.chat.id, baseMsgObj)
+        }
+      })
     } else if (rawText.length > 0) {
-      await pushLocalMessage({ role: 'ai', type: 'text', content: rawText })
+      if (props.chat.isBlocked) rawText = `[被系统拦截] ${rawText}`
+      pushMessage(props.chat.id, { role: 'ai', type: 'text', content: rawText })
     }
+    
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已收到回复' }))
+    checkAndRunAutoSummary()
 
-    if (action === 'exit') {
-      window.dispatchEvent(new CustomEvent('sys-toast', { detail: '对方已离开聊天室。' }))
-      if (playerProfile.value.settings?.autoDeleteOnExit) {
-        await db.dating_chats.delete(props.chatId)
-        await db.dating_profiles.delete(chatData.value.profileId)
-        await db.messages.where({ sessionId: `dating_${props.chatId}` }).delete()
-      } else {
-        await db.dating_chats.update(props.chatId, { status: 'exited' })
-      }
-      setTimeout(() => emit('close'), 1500)
-    } 
-    else if (action === 'reveal') {
-      await pushLocalMessage({ role: 'system', type: 'reveal_request', content: '[系统] 对方好感度已达标，向你发送了交换真实身份的请求。' })
-    }
-
-  } catch (e) {
-    apiErrorDetails.value = e.message
-  } finally {
+  } catch (error) { 
+    apiErrorDetails.value = error.message 
+  } finally { 
     isWaiting.value = false
+    scrollToBottom() 
   }
-}
-
-const handleRejectReveal = async () => {
-  showRevealModal.value = false
-  await pushLocalMessage({ role: 'system', type: 'text', content: '你拒绝了对方的请求。' })
-}
-
-const handleAcceptReveal = async () => {
-  showRevealModal.value = false
-  const fullJson = chatProfile.value.fullJson
-  const realName = fullJson.name || chatProfile.value.nickname
-  const newChar = getEmptyCharacter()
-  
-  newChar.name = realName
-  newChar.trueName = realName
-  newChar.description = JSON.stringify(fullJson, null, 2)
-  newChar.first_mes = '我们终于正式见面了。'
-  
-  let selectedAvatar = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(realName)}&backgroundColor=f4f5f7`
-  const customUrls = (playerProfile.value.settings?.avatarUrls || '').split('\n').map(u => u.trim()).filter(Boolean)
-  if (customUrls.length > 0) {
-    selectedAvatar = customUrls[Math.floor(Math.random() * customUrls.length)]
-  }
-  newChar.avatar = selectedAvatar
-
-  await saveCharacter(newChar) 
-  const allChars = await db.characters.toArray()
-  const realChar = allChars[allChars.length - 1] 
-
-  const realSession = createSession([realChar])
-  realSession.isBlocked = true 
-
-  await db.messages.where({ sessionId: `dating_${props.chatId}` }).modify({ sessionId: realSession.id })
-  addFriendRequest(realSession.id, `你好，我是 ${realName}，很高兴重新认识你。`)
-  
-  await addMemory(realSession.id, { characterId: realChar.id, type: 'milestone', source: 'dating_app', content: `我们在冷推(Spark)相遇，今天正式交换了姓名（原来TA叫${realName}），并互相发送了好友验证。` })
-  
-  await db.dating_chats.update(props.chatId, { status: 'revealed' })
-
-  window.dispatchEvent(new CustomEvent('sys-toast', { detail: '已向对方发送好友申请！' }))
-  emit('close')
 }
 </script>
 
 <style scoped>
-.dating-chat-page { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #f4f5f7; z-index: 400; display: flex; flex-direction: column; }
-.slide-up-enter-active, .slide-up-leave-active { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.slide-up-enter-from, .slide-up-leave-to { transform: translateY(100%); }
-
-.dating-chat-header { padding: calc(env(safe-area-inset-top) + 10px) 16px 12px; background: #ffffff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e5ea; z-index: 10; }
-.header-info { text-align: center; flex: 1; }
-.chat-title { font-size: 16px; font-weight: 700; color: #1c1c1e; display: flex; align-items: center; justify-content: center; gap: 6px; }
-.badge { font-size: 9px; padding: 2px 4px; background: #14CCCC; color: white; border-radius: 4px; font-weight: normal; }
-.chat-sub { font-size: 10px; color: #8e8e93; margin-top: 2px; }
-
-.chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-.system-intro { text-align: center; font-size: 11px; color: #8e8e93; background: rgba(0,0,0,0.05); padding: 8px 12px; border-radius: 8px; margin: 0 auto 20px; width: fit-content; line-height: 1.4; }
-
-.msg-row.is-ai { display: flex; gap: 10px; margin-bottom: 15px; }
-.msg-avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; display: flex; justify-content: center; align-items: center; color: #888; font-weight: bold; flex-shrink: 0; }
-.msg-bubble { background: #fff; padding: 12px 16px; border-radius: 4px 18px 18px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); font-size: 14px; line-height: 1.5; color: #333; max-width: 80%; }
-
-.reveal-request-card { background: #ffffff; border-radius: 16px; padding: 16px; margin: 10px auto; width: 80%; box-shadow: 0 4px 15px rgba(20, 204, 204, 0.15); border: 1px solid rgba(20, 204, 204, 0.3); text-align: center; }
-.reveal-request-card .icon { color: #14CCCC; font-size: 24px; margin-bottom: 8px; }
-.reveal-request-card .text { font-size: 13px; color: #333; margin-bottom: 16px; font-weight: 600; line-height: 1.4; }
-.reveal-request-card .btn-handle { background: #14CCCC; color: white; border: none; padding: 8px 24px; border-radius: 20px; font-weight: 600; font-size: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(20, 204, 204, 0.3); }
-
-/* 档案详情卡片优化 */
-.simple-profile-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 500; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-.simple-profile-box { background: #fff; width: 80%; border-radius: 24px; padding: 24px; text-align: center; animation: pop 0.2s; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-.sp-avatar { width: 64px; height: 64px; border-radius: 50%; background: #f4f5f7; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ccc; }
-.sp-name { font-size: 18px; font-weight: 800; color: #1c1c1e; margin-bottom: 4px; }
-.sp-basic { font-size: 12px; color: #8e8e93; margin-bottom: 16px; }
-.sp-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 20px; }
-.sp-tags span { background: rgba(20, 204, 204, 0.1); color: #14CCCC; font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 600; }
-.sp-bio { font-size: 12px; color: #555; line-height: 1.6; background: #f9f9f9; padding: 16px; border-radius: 16px; text-align: left; }
-.sp-bio-title { font-weight: 700; color: #1c1c1e; margin-bottom: 6px; display: block; font-size: 11px; text-transform: uppercase; }
-.sp-bio-text { margin-bottom: 16px; font-style: italic; }
-
-/* 拦截警告 UI */
-.restricted-modal-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 550; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
-.restricted-box { background: #ffffff; width: 75%; border-radius: 24px; padding: 30px 24px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.r-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; margin: 0 auto 16px; }
-.r-icon.memory { background: #f0f4ff; color: #5c8aff; }
-.r-icon.offline { background: #fff0f0; color: #ff3b30; }
-.restricted-box h3 { font-size: 18px; font-weight: 800; color: #1c1c1e; margin-bottom: 10px; }
-.restricted-box p { font-size: 13px; color: #8e8e93; line-height: 1.6; margin-bottom: 24px; white-space: pre-wrap; }
-.r-btn { width: 100%; padding: 14px; border-radius: 16px; background: #1c1c1e; color: white; border: none; font-weight: 600; font-size: 14px; cursor: pointer; }
-
-.reveal-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 600; display: flex; justify-content: center; align-items: center; }
-.reveal-box { background: #ffffff; width: 80%; border-radius: 24px; padding: 30px 20px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.3); animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-@keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-.reveal-icon { width: 60px; height: 60px; border-radius: 50%; background: rgba(20, 204, 204, 0.1); color: #14CCCC; font-size: 28px; display: flex; justify-content: center; align-items: center; margin: 0 auto 16px; }
-.reveal-box h3 { font-size: 18px; font-weight: 700; color: #1c1c1e; margin-bottom: 8px; }
-.reveal-box p { font-size: 12px; color: #8e8e93; margin-bottom: 24px; }
-.reveal-actions { display: flex; gap: 12px; }
-.reveal-actions button { flex: 1; padding: 12px; border-radius: 12px; border: none; font-weight: 600; font-size: 14px; cursor: pointer; }
-.btn-reject { background: #f4f5f7; color: #ff3b30; }
-.btn-accept { background: #14CCCC; color: white; box-shadow: 0 4px 12px rgba(20, 204, 204, 0.3); }
+.chat-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-color); position: relative; }
 </style>

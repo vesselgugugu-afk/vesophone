@@ -224,12 +224,13 @@ const pseudoChatObj = computed(() => {
     description: JSON.stringify(chatProfile.value.fullJson, null, 2),
     advancedSettingsEnabled: false
   }
+  const dicebearUrl = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(chatProfile.value.nickname || 'anonymous')}&backgroundColor=f4f5f7`
   return {
     id: `dating_${props.chatId}`,
     title: chatProfile.value.nickname,
     isGroup: false,
     participants: [fakeChar],
-    overrideAvatar: '',
+    overrideAvatar: dicebearUrl,
     settings: { 
       contextMessageCount: 20, 
       autoSummaryCount: 0, 
@@ -389,13 +390,16 @@ const triggerAiReply = async () => {
   try {
     const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
     
-    // 核心修复：用非常明确的文案替换超长的人设，避免用户误解
+    // 仅替换冷推人设 JSON，不动其他提示词
     const safeReq = JSON.parse(JSON.stringify(apiMessages))
     const sysIdx = safeReq.findIndex(x => x.role === 'system')
     if (sysIdx > -1 && chatProfile.value?.fullJson) {
-      const secretStr = JSON.stringify(chatProfile.value.fullJson, null, 2)
-      if (secretStr) {
-        safeReq[sysIdx].content = safeReq[sysIdx].content.replace(secretStr, '\n\n【< 该角色的真实人设 JSON 数据已被系统刻意打码，避免您查阅日志时被剧透。但该数据已成功发送至 AI，请放心 >】\n\n')
+      const prettyStr = JSON.stringify(chatProfile.value.fullJson, null, 2)
+      const compactStr = JSON.stringify(chatProfile.value.fullJson)
+      if (prettyStr && safeReq[sysIdx].content.includes(prettyStr)) {
+        safeReq[sysIdx].content = safeReq[sysIdx].content.replace(prettyStr, '\n\n【< 冷推角色人设 JSON 已打码，防止剧透 >】\n\n')
+      } else if (compactStr && safeReq[sysIdx].content.includes(compactStr)) {
+        safeReq[sysIdx].content = safeReq[sysIdx].content.replace(compactStr, '\n\n【< 冷推角色人设 JSON 已打码，防止剧透 >】\n\n')
       }
     }
     
@@ -565,4 +569,3 @@ const handleAcceptReveal = async () => {
 .btn-reject { background: #f4f5f7; color: #ff3b30; }
 .btn-accept { background: #14CCCC; color: white; box-shadow: 0 4px 12px rgba(20, 204, 204, 0.3); }
 </style>
-

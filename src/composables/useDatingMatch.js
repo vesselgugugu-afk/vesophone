@@ -1,8 +1,17 @@
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import db from '@/db'
 import { useApi } from '@/composables/useApi'
 import { useDatingPlayer } from '@/composables/useDatingPlayer'
 import { useDatingPrefs } from '@/composables/useDatingPrefs'
+
+// 安全深拷贝，剥离所有 Vue 响应式 Proxy，拯救 IndexedDB
+const toPlain = (obj) => {
+  try {
+    return JSON.parse(JSON.stringify(toRaw(obj)))
+  } catch (e) {
+    return obj
+  }
+}
 
 export function useDatingMatch() {
   const { apiUrl, apiKey, apiModel } = useApi()
@@ -226,13 +235,14 @@ ${baseStr}
       const res = await callApi([{ role: 'user', content: prompt }], { temperature: 0.85 })
       const fullJson = extractJson(res.content)
       
+      // 核心修复点：强制剥离响应式对象，防止 IndexedDB DataCloneError
       const profileId = await db.dating_profiles.add({
         nickname: fullJson.nickname || '未知用户',
         gender: fullJson.basic_info ? fullJson.basic_info.split('/')[1] : '未知',
         age: fullJson.basic_info ? fullJson.basic_info.split('/')[0] : '未知',
         isRevealed: false,
-        fullJson: fullJson, // 将完整设定封存
-        baseInfo: baseInfo // 核心修改：将短简介存下来供名片展示
+        fullJson: toPlain(fullJson), // 安全脱敏
+        baseInfo: toPlain(baseInfo)  // 安全脱敏
       })
 
       const chatId = await db.dating_chats.add({
