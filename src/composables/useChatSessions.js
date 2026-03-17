@@ -160,20 +160,22 @@ const toPlain = (obj) => {
 
 export function useChatSessions() {
   const createSession = (selectedChars) => {
-    if (!selectedChars || selectedChars.length === 0) return null
+    // 核心防线：过滤掉所有 undefined 和 null，防止外部传脏数据导致崩溃
+    const validChars = selectedChars?.filter(c => !!c) || []
+    if (validChars.length === 0) return null
     
     const initialVars = {}
-    if (selectedChars.length === 1 && selectedChars[0].variables) {
-      selectedChars[0].variables.forEach(v => {
+    if (validChars.length === 1 && validChars[0].variables) {
+      validChars[0].variables.forEach(v => {
         initialVars[v.name] = v.default
       })
     }
 
     const newChat = {
       id: Date.now(),
-      title: selectedChars.map((c) => c.name).join('、'),
-      isGroup: selectedChars.length > 1,
-      participants: selectedChars,
+      title: validChars.map((c) => c.name).join('、'),
+      isGroup: validChars.length > 1,
+      participants: validChars,
       lastMessage: '新对话已创建',
       lastMessageTimestamp: Date.now(),
       settings: {
@@ -297,7 +299,6 @@ export function useChatSessions() {
     if (fullMem.weight === undefined) fullMem.weight = fullMem.importance
     if (fullMem.characterId === undefined) fullMem.characterId = getDefaultCharacterId(sessionId)
     
-    // 强制转换为 Number 保护底层
     if (fullMem.characterId !== null && !isNaN(Number(fullMem.characterId))) fullMem.characterId = Number(fullMem.characterId)
 
     if (fullMem.keywords === undefined) fullMem.keywords = []
@@ -323,7 +324,6 @@ export function useChatSessions() {
     if (normalized.weight === undefined) normalized.weight = normalized.importance
     if (normalized.characterId === undefined) normalized.characterId = getDefaultCharacterId(sessionId)
     
-    // 强制转换为 Number 保护底层
     if (normalized.characterId !== null && !isNaN(Number(normalized.characterId))) normalized.characterId = Number(normalized.characterId)
 
     if (normalized.keywords === undefined) normalized.keywords = []
@@ -349,7 +349,6 @@ export function useChatSessions() {
     return results
   }
 
-  // 核心修复点：使用 anyOf 进行双重兼容匹配（数字和字符串全部拿下），拯救已经被写坏的脏数据！
   const getMemoriesByCharacter = async (characterId) => {
     if (!characterId) return []
     return await db.memories.where('characterId').anyOf(Number(characterId), String(characterId)).toArray()
@@ -421,7 +420,6 @@ export function useChatSessions() {
     activeDiaries.value = activeDiaries.value.filter(d => d.id !== diaryId)
   }
 
-  // 核心修复点：双重兼容匹配
   const getDiariesByCharacter = async (characterId, includeArchived = true) => {
     if (!characterId) return []
     let arr = await db.diaries.where('characterId').anyOf(Number(characterId), String(characterId)).toArray()
@@ -452,6 +450,7 @@ export function useChatSessions() {
       friendRequests.value.unshift({ id: Date.now(), chatId, messages: [{ text: text || '请求添加你为好友', time: Date.now() }], time: Date.now() })
     }
   }
+  
   const removeFriendRequest = (id) => {
     friendRequests.value = friendRequests.value.filter(r => r.id !== id)
   }

@@ -8,9 +8,9 @@
       </div>
 
       <div class="chat-item" v-for="chat in chatList" :key="chat.id" @click="$emit('open-chat', chat.id)">
-        <div class="chat-avatar" :class="{ 'revealed': chat.status === 'revealed' }">
-          <i :class="chat.type === 'blind' ? 'fas fa-microphone' : 'fas fa-question-circle'"></i>
+        <div class="chat-avatar" :class="{ 'revealed': chat.status === 'revealed' }" :style="`background-image: url(${getStableAvatar(chat.profile?.nickname)}); background-size: cover; background-position: center;`">
         </div>
+        
         <div class="chat-info">
           <div class="chat-name-row">
             <div class="chat-name" :style="chat.status === 'revealed' ? 'color: #14CCCC;' : ''">
@@ -36,9 +36,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import db from '@/db'
+import { useDatingAvatar } from '@/composables/useDatingAvatar'
 
 defineEmits(['open-chat'])
 
+const { getStableAvatar } = useDatingAvatar()
 const chatList = ref([])
 
 const loadChats = async () => {
@@ -64,7 +66,6 @@ const getPreviewMsg = (chat) => {
 
 onMounted(() => {
   loadChats()
-  // 监听删档事件，实时刷新列表
   window.addEventListener('dating-refresh-chats', loadChats)
 })
 
@@ -79,8 +80,8 @@ onUnmounted(() => {
 .chat-list { padding: 12px 20px; }
 .chat-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e5e5ea; cursor: pointer; }
 .chat-item:active { background-color: #f9f9f9; }
-.chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #e0e0e0, #f5f5f5); display: flex; align-items: center; justify-content: center; color: #8e8e93; font-size: 20px; position: relative; }
-.chat-avatar.revealed { background: linear-gradient(135deg, rgba(20, 204, 204, 0.1), #e0f7f7); color: #14CCCC; }
+.chat-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #e0e0e0, #f5f5f5); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
+.chat-avatar.revealed { border: 2px solid #14CCCC; }
 .chat-info { flex: 1; overflow: hidden; }
 .chat-name-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .chat-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; color: #1c1c1e; }

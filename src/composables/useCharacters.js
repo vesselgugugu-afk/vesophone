@@ -50,13 +50,11 @@ const migratedData = rawData.map(char => {
 
 const characters = ref(migratedData)
 
-// 核心重构：动静分离存储，拦截 LocalStorage 保存，剔除大型 Base64 图片
 watch(characters, (v) => {
   const lightData = v.map(c => ({ ...c, avatar: '' })) 
   localStorage.setItem(KEY, JSON.stringify(lightData))
 }, { deep: true })
 
-// 核心重构：启动时将 IndexedDB 中的高清图片，热挂载到响应式内存中
 ;(async () => {
   try {
     const records = await db.media.toArray()
@@ -96,18 +94,19 @@ export function useCharacters() {
       })
     }
 
-    // 核心：把头像数据写入高速宽带库 DB
     if (form.avatar) {
       await db.media.put({ id: `char_${targetId}`, data: form.avatar })
     } else {
       await db.media.delete(`char_${targetId}`)
     }
-    return true
+    
+    // 核心修复：返回刚刚存入的 ID
+    return targetId
   }
 
   const deleteChar = async (id) => {
     characters.value = characters.value.filter((c) => c.id !== id)
-    await db.media.delete(`char_${id}`) // 清理尸体
+    await db.media.delete(`char_${id}`)
   }
 
   const getCharById = (id) => {

@@ -11,15 +11,31 @@
     |       |-- deploy.yml
     |-- .vscode
     |   |-- extensions.json
+    |-- dev-dist
+    |   |-- registerSW.js
+    |   |-- sw.js
+    |   |-- workbox-5a5d9309.js
     |-- dist
     |   |-- index.html
+    |   |-- manifest.webmanifest
+    |   |-- pwa-192x192.png
+    |   |-- pwa-512x512.png
+    |   |-- registerSW.js
+    |   |-- sw.js
+    |   |-- workbox-8c29f6e4.js
     |   |-- assets
     |       |-- index-9lMmfQt8.js
     |       |-- index-9qaT2RjD.js
+    |       |-- index-b4MPcuIQ.js
     |       |-- index-B9J7C0jl.css
+    |       |-- index-BbHRvo0v.css
     |       |-- index-BF4ZHKwr.js
+    |       |-- index-BfeROFYb.css
     |       |-- index-BG6FNGzZ.js
+    |       |-- index-bgVpDSII.js
     |       |-- index-BhxYOy7v.js
+    |       |-- index-Bj-qs3C8.js
+    |       |-- index-bNRHXvaX.css
     |       |-- index-BO-rNdc9.js
     |       |-- index-BsRhJtWr.css
     |       |-- index-BsxU5pn3.js
@@ -27,23 +43,39 @@
     |       |-- index-BZpU3-Og.css
     |       |-- index-C86z8SYp.js
     |       |-- index-CBquhr3s.css
+    |       |-- index-Cc-I9_6U.css
+    |       |-- index-Cft3Ecsd.css
+    |       |-- index-CJ3X0cDa.js
     |       |-- index-CKkQOlpP.js
     |       |-- index-Cmhi6Ewq.js
+    |       |-- index-COqf2Uds.css
+    |       |-- index-CwJHkdmQ.js
+    |       |-- index-CXYy4mnQ.js
+    |       |-- index-C_CuO02X.css
+    |       |-- index-D89FAWZ7.js
     |       |-- index-DASBRLLz.css
+    |       |-- index-DB8NHFjx.js
     |       |-- index-DBdSFs_I.css
     |       |-- index-DDrNGO1C.css
+    |       |-- index-DFRanZdy.js
     |       |-- index-DHEOfvJh.css
     |       |-- index-DJIqAW9r.js
     |       |-- index-DKhrD7sf.js
+    |       |-- index-DmgD0WsH.css
+    |       |-- index-DR5BX4kL.css
     |       |-- index-DvtbZwze.css
     |       |-- index-Dw5NUDfb.css
     |       |-- index-eBirwLHZ.css
     |       |-- index-eEbgW1OU.js
     |       |-- index-exLts9zT.js
+    |       |-- index-J7z478sl.js
     |       |-- index-JlPk6OJ7.js
     |       |-- index-LthLsWDK.css
     |       |-- index-Px-EZ46R.css
+    |       |-- index-xoq5atW-.css
     |-- public
+    |   |-- pwa-192x192.png
+    |   |-- pwa-512x512.png
     |-- src
         |-- App.vue
         |-- db.js
@@ -53,6 +85,18 @@
         |   |   |-- ApiApp.vue
         |   |-- appearance
         |   |   |-- AppearanceApp.vue
+        |   |-- dating
+        |   |   |-- DatingApp.vue
+        |   |   |-- components
+        |   |   |   |-- DatingChatDetail.vue
+        |   |   |   |-- FilterModal.vue
+        |   |   |   |-- RandomSetupModal.vue
+        |   |   |   |-- SettingsModal.vue
+        |   |   |   |-- SwipeModal.vue
+        |   |   |-- tabs
+        |   |       |-- ChatsTab.vue
+        |   |       |-- DiscoverTab.vue
+        |   |       |-- ProfileTab.vue
         |   |-- memory
         |   |   |-- MemoryApp.vue
         |   |   |-- MemoryManual.vue
@@ -125,6 +169,10 @@
         |   |-- useAppearance.js
         |   |-- useCharacters.js
         |   |-- useChatSessions.js
+        |   |-- useDatingAvatar.js
+        |   |-- useDatingMatch.js
+        |   |-- useDatingPlayer.js
+        |   |-- useDatingPrefs.js
         |   |-- useDesktop.js
         |   |-- useDiaryCardStyles.js
         |   |-- useMemoryCardStyles.js

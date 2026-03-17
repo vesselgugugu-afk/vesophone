@@ -3,15 +3,14 @@
     <div class="modal-box">
       <div class="modal-title">系统与高阶设置</div>
 
-      <!-- 头像库设置 -->
-      <div class="form-group">
-        <label class="form-label">自定义奔现头像库 (URL)</label>
-        <textarea class="form-textarea" v-model="localSettings.avatarUrls" placeholder="填入网络图片 URL，每行一个。奔现加 QQ 好友时，将从中随机抽取作为角色头像。若为空，则使用默认算法生成。"></textarea>
-      </div>
-
-      <!-- 强制爱与系统开关 -->
+      <!-- 剧情机制控制 -->
       <div class="form-group">
         <label class="form-label">剧情机制控制</label>
+
+        <label class="toggle-row">
+          <span>在冷推中使用独立副 API (需全局配置)</span>
+          <input type="checkbox" v-model="localSettings.useSubApiForDating">
+        </label>
         
         <label class="toggle-row">
           <span>对方离开聊天时自动抹除数据</span>
@@ -31,6 +30,12 @@
         <div style="font-size: 10px; color: #8e8e93; margin-top: 6px;">
           注：关闭后两项，系统将启动“强制爱”约束，对方将无法逃跑并强制同意奔现。
         </div>
+      </div>
+
+      <!-- 头像库设置 -->
+      <div class="form-group" style="margin-top: 20px;">
+        <label class="form-label">追加自定义头像库 (URL)</label>
+        <textarea class="form-textarea" style="height: 60px;" v-model="localSettings.avatarUrls" placeholder="填入网络图片 URL，每行一个。它会与内置高清图库混合在一起进行随机分配。"></textarea>
       </div>
 
       <!-- UI 设置 -->
@@ -57,17 +62,20 @@ const emit = defineEmits(['close'])
 const { playerProfile, updateSettings, updatePlayer } = useDatingPlayer()
 
 const localSettings = ref({
+  useSubApiForDating: false,
   autoDeleteOnExit: true,
   allowAiExit: true,
   allowAiReject: true,
   avatarUrls: ''
 })
+
 const localCss = ref('')
 
 watch(() => props.show, (val) => {
   if (val) {
     const s = playerProfile.value.settings || {}
     localSettings.value = {
+      useSubApiForDating: s.useSubApiForDating || false,
       autoDeleteOnExit: s.autoDeleteOnExit ?? true,
       allowAiExit: s.allowAiExit ?? true,
       allowAiReject: s.allowAiReject ?? true,
@@ -86,13 +94,13 @@ const saveSettings = async () => {
 </script>
 
 <style scoped>
-.modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 300; display: flex; align-items: center; justify-content: center; }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 99999; display: flex; align-items: center; justify-content: center; }
 .modal-box { background: #ffffff; width: 85%; max-height: 85vh; overflow-y: auto; border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; text-align: center; color: #1c1c1e; }
 .form-group { margin-bottom: 16px; }
 .form-label { font-size: 12px; color: #8e8e93; margin-bottom: 8px; display: block; font-weight: 600; }
-.form-textarea { width: 100%; padding: 12px; border: 1px solid #e5e5ea; border-radius: 8px; background: #f4f5f7; outline: none; font-family: inherit; font-size: 13px; resize: none; height: 120px; box-sizing: border-box; }
+.form-textarea { width: 100%; padding: 12px; border: 1px solid #e5e5ea; border-radius: 8px; background: #f4f5f7; outline: none; font-family: inherit; font-size: 13px; resize: none; box-sizing: border-box; }
 .toggle-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #1c1c1e; padding: 8px 0; border-bottom: 1px solid #f4f5f7; cursor: pointer; }
 .toggle-row input { accent-color: #14CCCC; width: 16px; height: 16px; }
 .modal-btns { display: flex; gap: 12px; margin-top: 24px; }

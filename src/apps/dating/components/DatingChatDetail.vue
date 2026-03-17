@@ -16,12 +16,12 @@
         </div>
         
         <div style="display:flex; gap:10px; align-items:center;">
+          <i class="fas fa-user-plus" v-if="chatData?.status !== 'revealed' && chatData?.status !== 'exited'" style="font-size: 14px; color: #14CCCC; cursor: pointer;" @click="requestReveal"></i>
           <i class="fas fa-terminal" style="font-size: 14px; color: #c7c7cc; cursor: pointer;" @click="showDebugPanel = true"></i>
           <i class="fas fa-ellipsis-h" style="font-size: 18px; color: #8e8e93; cursor: pointer;" @click="handleDisconnect"></i>
         </div>
       </div>
       
-      <!-- 多选模式下的头部 -->
       <div class="dating-chat-header" v-else style="background:#f4f5f7;">
         <div style="font-size:14px; color:#888;" @click="isSelectionMode = false">取消</div>
         <div style="font-weight:600; font-size:14px;">已选择 {{ selectedMsgs.length }} 项</div>
@@ -38,6 +38,10 @@
              <div class="icon"><i class="fas fa-heartbeat"></i></div>
              <div class="text">{{ msg.content }}</div>
              <button class="btn-handle" @click="showRevealModal = true">点击处理</button>
+          </div>
+          
+          <div v-else-if="msg.type === 'reveal_request_sent'" class="system-intro" style="background: rgba(20, 204, 204, 0.1); color: #14CCCC; border: 1px solid rgba(20, 204, 204, 0.3);">
+            <i class="fas fa-paper-plane" style="margin-right: 4px;"></i> 你向对方发送了交换身份的请求，等待回应...
           </div>
           
           <ChatMessageItem 
@@ -66,7 +70,6 @@
         </div>
       </div>
 
-      <!-- 核心修复：补充底栏相关的重试和删除事件对接 -->
       <ChatBottomBar 
         v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
@@ -85,7 +88,6 @@
         @delete-selected="deleteSelected"
       />
 
-      <!-- 核心修复：对接多选触发 -->
       <ChatActionSheet 
         v-model:show="actionSheet.show" 
         :msg="actionSheet.msg" 
@@ -101,7 +103,7 @@
 
       <div class="simple-profile-mask" v-if="showSimpleProfile" @click.self="showSimpleProfile = false">
         <div class="simple-profile-box">
-          <div class="sp-avatar">?</div>
+          <div class="sp-avatar" :style="`background-image: url(${pseudoChatObj.overrideAvatar}); background-size: cover;`"></div>
           <div class="sp-name">{{ chatProfile?.nickname || '匿名网友' }}</div>
           <div class="sp-basic">{{ chatProfile?.age || '?' }}岁 / {{ chatProfile?.gender || '?' }}</div>
           <div class="sp-tags">
@@ -127,14 +129,27 @@
         </div>
       </div>
 
+      <!-- 确认添加的二次弹窗 -->
       <div class="reveal-modal" v-if="showRevealModal">
         <div class="reveal-box">
           <div class="reveal-icon"><i class="fas fa-heartbeat"></i></div>
-          <h3>好感度已达标</h3>
-          <p>对方请求与你交换真实身份，是否发送好友验证？</p>
+          <h3>确立连接</h3>
+          <p>对方已同意你的奔现请求。确认添加 QQ 好友并暴露真实身份吗？</p>
           <div class="reveal-actions">
-            <button class="btn-reject" @click="handleRejectReveal">狠心拒绝</button>
-            <button class="btn-accept" @click="handleAcceptReveal">发送验证</button>
+            <button class="btn-reject" @click="handleRejectReveal">狠心取消</button>
+            <button class="btn-accept" @click="handleAcceptReveal">确认添加</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 新增：成功送达后的提示弹窗 -->
+      <div class="reveal-modal" v-if="showSuccessModal">
+        <div class="reveal-box">
+          <div class="reveal-icon" style="background: rgba(20, 204, 204, 0.1); color: #14CCCC;"><i class="fas fa-check"></i></div>
+          <h3>请求已送达</h3>
+          <p style="text-align:left; color:#555; font-size:13px; line-height:1.6;">对方的身份档案已被成功提取，所有的聊天记忆也已打包。<br><br>TA 已向你的 QQ 发送了好友验证申请，请前往 <b style="color:#1c1c1e;">[桌面 - QQ - 通讯录 - 新的朋友]</b> 中查看并处理。</p>
+          <div class="reveal-actions" style="margin-top: 15px;">
+            <button class="btn-accept" style="width: 100%; box-shadow: none;" @click="finishReveal">我知道了</button>
           </div>
         </div>
       </div>
@@ -155,6 +170,7 @@ import { useChatSessions } from '@/composables/useChatSessions'
 import { useCharacters } from '@/composables/useCharacters'
 import { useDatingMatch } from '@/composables/useDatingMatch'
 import { useDatingPlayer } from '@/composables/useDatingPlayer'
+import { useDatingAvatar } from '@/composables/useDatingAvatar'
 
 import ChatMessageItem from '@/apps/qq/components/ChatMessageItem.vue'
 import ChatBottomBar from '@/apps/qq/components/ChatBottomBar.vue'
@@ -166,12 +182,13 @@ import SummaryPanel from '@/apps/qq/SummaryPanel.vue'
 const props = defineProps({ show: Boolean, chatId: Number })
 const emit = defineEmits(['close'])
 
-const { apiUrl, apiKey, apiModel } = useApi()
+const { apiUrl, apiKey, apiModel, subApiUrl, subApiKey, subApiModel } = useApi()
 const { buildApiMessages } = usePromptOrder()
 const { createSession, addMemory, addFriendRequest } = useChatSessions()
-const { getEmptyCharacter, saveCharacter } = useCharacters()
+const { getEmptyCharacter, saveCharacter, characters } = useCharacters()
 const { getDatingAnonymityRule, parseAIAction } = useDatingMatch()
 const { playerProfile } = useDatingPlayer()
+const { getStableAvatar } = useDatingAvatar()
 
 const chatData = ref(null)
 const chatProfile = ref(null)
@@ -180,6 +197,7 @@ const messages = ref([])
 const isWaiting = ref(false)
 const chatBox = ref(null)
 const showRevealModal = ref(false)
+const showSuccessModal = ref(false) // 新增：控制成功提示窗
 const showSimpleProfile = ref(false)
 const showDebugPanel = ref(false)
 const showSummaryPanel = ref(false)
@@ -195,7 +213,6 @@ const restrictedAlert = ref({ show: false, title: '', desc: '', icon: '', type: 
 let pressTimer = null
 const actionSheet = ref({ show: false, msg: null })
 
-// 新增多选状态
 const isSelectionMode = ref(false)
 const selectedMsgs = ref([])
 
@@ -213,6 +230,7 @@ watch(() => props.show, async (val) => {
     messages.value = []
     isSelectionMode.value = false
     selectedMsgs.value = []
+    showSuccessModal.value = false // 重置状态
   }
 })
 
@@ -224,13 +242,13 @@ const pseudoChatObj = computed(() => {
     description: JSON.stringify(chatProfile.value.fullJson, null, 2),
     advancedSettingsEnabled: false
   }
-  const dicebearUrl = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(chatProfile.value.nickname || 'anonymous')}&backgroundColor=f4f5f7`
+  const niceAvatarUrl = getStableAvatar(chatProfile.value.nickname)
   return {
     id: `dating_${props.chatId}`,
     title: chatProfile.value.nickname,
     isGroup: false,
     participants: [fakeChar],
-    overrideAvatar: dicebearUrl,
+    overrideAvatar: niceAvatarUrl,
     settings: { 
       contextMessageCount: 20, 
       autoSummaryCount: 0, 
@@ -243,6 +261,17 @@ const pseudoChatObj = computed(() => {
 })
 
 const scrollToBottom = () => { nextTick(() => { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }) }
+
+const requestReveal = async () => {
+  if(confirm('想主动向对方发送交换真实身份（奔现）的请求吗？\n如果好感度不够，对方可能会拒绝哦。')) {
+    await pushLocalMessage({ 
+      role: 'user', 
+      type: 'reveal_request_sent', 
+      content: '【系统动作：我正式向你发送了交换真实身份/奔现的请求。如果你愿意，请同意并输出 <action>reveal</action> 动作；如果你觉得还不是时候，请直接在文本里拒绝我。】' 
+    })
+    triggerAiReply()
+  }
+}
 
 const startPress = (msg) => { pressTimer = setTimeout(() => { actionSheet.value = { show: true, msg } }, 500) }
 const clearPress = () => { if (pressTimer) clearTimeout(pressTimer) }
@@ -261,7 +290,6 @@ const handleRecallOwn = async () => {
   if (msg) { msg.type = 'recalled'; msg.oldContent = msg.content }
 }
 
-// 多选逻辑
 const toggleSelect = (id) => {
   if (selectedMsgs.value.includes(id)) {
     selectedMsgs.value = selectedMsgs.value.filter(x => x !== id)
@@ -283,7 +311,6 @@ const deleteSelected = async () => {
   }
 }
 
-// 核心修复：重Roll追踪删除最后一次 User 之后的所有 AI 消息
 const forceRegenerate = async () => {
   if (isWaiting.value) return
   actionSheet.value.show = false
@@ -390,7 +417,6 @@ const triggerAiReply = async () => {
   try {
     const apiMessages = buildApiMessages(pseudoChatObj.value, messages.value, [], [])
     
-    // 仅替换冷推人设 JSON，不动其他提示词
     const safeReq = JSON.parse(JSON.stringify(apiMessages))
     const sysIdx = safeReq.findIndex(x => x.role === 'system')
     if (sysIdx > -1 && chatProfile.value?.fullJson) {
@@ -405,10 +431,15 @@ const triggerAiReply = async () => {
     
     apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length/4), req: safeReq, time: new Date().toLocaleTimeString() }
 
-    const res = await fetch(apiUrl.value, {
+    const useSub = playerProfile.value.settings?.useSubApiForDating
+    const targetUrl = useSub && subApiUrl.value ? subApiUrl.value : apiUrl.value
+    const targetKey = useSub && subApiKey.value ? subApiKey.value : apiKey.value
+    const targetModel = useSub && subApiModel.value ? subApiModel.value : apiModel.value
+
+    const res = await fetch(targetUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
-      body: JSON.stringify({ model: apiModel.value, messages: apiMessages, temperature: 0.85 })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${targetKey}` },
+      body: JSON.stringify({ model: targetModel, messages: apiMessages, temperature: 0.85 })
     })
     
     if (!res.ok) throw new Error('API 访问失败')
@@ -462,14 +493,13 @@ const triggerAiReply = async () => {
 
 const handleRejectReveal = async () => {
   showRevealModal.value = false
-  await pushLocalMessage({ role: 'system', type: 'text', content: '你拒绝了对方的请求。' })
+  await pushLocalMessage({ role: 'system', type: 'text', content: '你取消了请求。' })
 }
 
-// 核心修复：创建 QQ 角色前安全补充变量系统底层字段
 const handleAcceptReveal = async () => {
   showRevealModal.value = false
-  const fullJson = chatProfile.value.fullJson
-  const realName = fullJson.name || chatProfile.value.nickname
+  const fullJson = chatProfile.value.fullJson || {}
+  const realName = fullJson.name || chatProfile.value.nickname || '未知用户'
   
   const newChar = getEmptyCharacter()
   newChar.name = realName
@@ -477,40 +507,41 @@ const handleAcceptReveal = async () => {
   newChar.description = JSON.stringify(fullJson, null, 2)
   newChar.first_mes = '我们终于正式见面了。'
   
-  // 防止 createSession 直接白屏报错的核心代码
-  if (!newChar.extensions) newChar.extensions = {}
-  newChar.extensions.aero_vars = { variables: [], variablePresets: [] }
-  
-  let selectedAvatar = `https://api.dicebear.com/9.x/micah/svg?seed=${encodeURIComponent(realName)}&backgroundColor=f4f5f7`
-  const customUrls = (playerProfile.value.settings?.avatarUrls || '').split('\n').map(u => u.trim()).filter(Boolean)
-  if (customUrls.length > 0) {
-    selectedAvatar = customUrls[Math.floor(Math.random() * customUrls.length)]
-  }
-  newChar.avatar = selectedAvatar
+  newChar.extensions = { aero_vars: { variables: [], variablePresets: [] } }
+  newChar.avatar = getStableAvatar(chatProfile.value.nickname)
 
-  await saveCharacter(newChar) 
-  const allChars = await db.characters.toArray()
-  const realChar = allChars[allChars.length - 1] 
+  const newCharId = await saveCharacter(newChar) 
+  const realChar = characters.value.find(c => c.id === newCharId)
+
+  if (!realChar) {
+    window.dispatchEvent(new CustomEvent('sys-toast', { detail: '跨应用传递失败，请重试' }))
+    return
+  }
 
   const realSession = createSession([realChar])
   realSession.isBlocked = true 
+  realSession.isBlockedByAi = false
 
-  await db.messages.where({ sessionId: `dating_${props.chatId}` }).modify({ sessionId: realSession.id })
-  addFriendRequest(realSession.id, `你好，我是 ${realName}，很高兴重新认识你。`)
+  const allMsgs = await db.messages.toArray()
+  const msgsToMigrate = allMsgs.filter(m => m.sessionId === `dating_${props.chatId}`)
+  for (const m of msgsToMigrate) {
+    await db.messages.update(m.id, { sessionId: realSession.id })
+  }
+
+  addFriendRequest(realSession.id, `你好，我是 ${realName}，我们在冷推聊得很开心。`)
   
   await addMemory(realSession.id, { characterId: realChar.id, type: 'milestone', source: 'dating_app', content: `我们在冷推(Spark)相遇，今天正式交换了姓名（原来TA叫${realName}），并互相发送了好友验证。` })
   
+  // 不再立刻删除档案和跳转，而是拉起成功的本地提示窗
+  showSuccessModal.value = true
+}
+
+// 用户点击“我知道了”后，才真正销毁冷推记录并关闭当前聊天
+const finishReveal = async () => {
+  showSuccessModal.value = false
   await db.dating_chats.delete(props.chatId)
   await db.dating_profiles.delete(chatData.value.profileId)
-  
   window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
-  
-  // 触发全局事件拉起 QQ
-  window.dispatchEvent(new CustomEvent('sys-open-app', { detail: 'qq' }))
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('sys-open-qq-contacts'))
-  }, 150)
-  
   emit('close')
 }
 </script>
@@ -538,7 +569,7 @@ const handleAcceptReveal = async () => {
 .reveal-request-card .text { font-size: 13px; color: #333; margin-bottom: 16px; font-weight: 600; line-height: 1.4; }
 .reveal-request-card .btn-handle { background: #14CCCC; color: white; border: none; padding: 8px 24px; border-radius: 20px; font-weight: 600; font-size: 12px; cursor: pointer; box-shadow: 0 4px 10px rgba(20, 204, 204, 0.3); }
 
-.simple-profile-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 500; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+.simple-profile-mask { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 99999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
 .simple-profile-box { background: #fff; width: 80%; border-radius: 24px; padding: 24px; text-align: center; animation: pop 0.2s; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
 .sp-avatar { width: 64px; height: 64px; border-radius: 50%; background: #f4f5f7; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ccc; }
 .sp-name { font-size: 18px; font-weight: 800; color: #1c1c1e; margin-bottom: 4px; }
@@ -549,7 +580,7 @@ const handleAcceptReveal = async () => {
 .sp-bio-title { font-weight: 700; color: #1c1c1e; margin-bottom: 6px; display: block; font-size: 11px; text-transform: uppercase; }
 .sp-bio-text { margin-bottom: 16px; font-style: italic; }
 
-.restricted-modal-mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 550; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
+.restricted-modal-mask { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); z-index: 99999; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
 .restricted-box { background: #ffffff; width: 75%; border-radius: 24px; padding: 30px 24px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .r-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 24px; margin: 0 auto 16px; }
 .r-icon.memory { background: #f0f4ff; color: #5c8aff; }
@@ -558,7 +589,7 @@ const handleAcceptReveal = async () => {
 .restricted-box p { font-size: 13px; color: #8e8e93; line-height: 1.6; margin-bottom: 24px; white-space: pre-wrap; }
 .r-btn { width: 100%; padding: 14px; border-radius: 16px; background: #1c1c1e; color: white; border: none; font-weight: 600; font-size: 14px; cursor: pointer; }
 
-.reveal-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 600; display: flex; justify-content: center; align-items: center; }
+.reveal-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); z-index: 99999; display: flex; justify-content: center; align-items: center; }
 .reveal-box { background: #ffffff; width: 80%; border-radius: 24px; padding: 30px 20px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.3); animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .reveal-icon { width: 60px; height: 60px; border-radius: 50%; background: rgba(20, 204, 204, 0.1); color: #14CCCC; font-size: 28px; display: flex; justify-content: center; align-items: center; margin: 0 auto 16px; }
