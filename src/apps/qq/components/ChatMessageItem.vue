@@ -101,6 +101,35 @@
             </div>
           </template>
 
+          <template v-else-if="msg.type === 'feed_share'">
+            <div class="msg-bubble is-feed-share"
+                 @click.stop="$emit('click-feed-share', msg)"
+                 @touchstart="$emit('press', msg)"
+                 @touchend="$emit('clear-press')"
+                 @mousedown="$emit('press', msg)"
+                 @mouseup="$emit('clear-press')">
+              <div class="feed-share-top">
+                <div class="feed-share-icon"><i class="fas fa-fire"></i></div>
+                <div class="feed-share-meta">
+                  <div class="feed-share-label">广场动态</div>
+                  <div class="feed-share-author">{{ msg.postSnapshot?.nickname || '匿名网友' }}</div>
+                </div>
+              </div>
+
+              <div class="feed-share-content">
+                {{ msg.postSnapshot?.content || msg.content || '分享了一条动态' }}
+              </div>
+
+              <div class="feed-share-tags" v-if="msg.postSnapshot && msg.postSnapshot.tags && msg.postSnapshot.tags.length > 0">
+                <span v-for="tag in msg.postSnapshot.tags" :key="tag"># {{ tag }}</span>
+              </div>
+
+              <div class="feed-share-note" v-if="msg.content && msg.postSnapshot && msg.content !== msg.postSnapshot.content">
+                "{{ msg.content }}"
+              </div>
+            </div>
+          </template>
+
           <template v-else-if="msg.type === 'image' || msg.type === 'sticker'">
             <div class="msg-bubble is-image" @touchstart="$emit('press', msg)" @touchend="$emit('clear-press')" @mousedown="$emit('press', msg)" @mouseup="$emit('clear-press')">
               <img v-if="msg.type === 'sticker' && stickerUrl" :src="stickerUrl" class="real-sticker" />
@@ -144,13 +173,11 @@
           
         </div>
 
-        <!-- 核心新增：发送失败的红色感叹号（巧妙利用 flex 排版置于气泡外侧） -->
         <div v-if="msg.isFailed" style="display:flex; align-items:center;">
           <i class="fas fa-exclamation-circle" style="color:#ff5252; font-size:18px; background:#fff; border-radius:50%;"></i>
         </div>
       </div>
       
-      <!-- 核心新增：发送失败的绝望提示语（避开头像空间完美对齐气泡底部） -->
       <div v-if="msg.isFailed && msg.role === 'user'" style="text-align:right; font-size:11px; color:#aaa; margin-top:6px; padding-right:50px;">
         未发送成功，请添加对方好友
       </div>
@@ -173,7 +200,7 @@ const props = defineProps({
   showTime: Boolean
 })
 
-const emit = defineEmits(['toggle-select', 'press', 'clear-press', 'click-transfer', 'click-music-share', 'click-colisten', 'view-recall', 'toggle-voice', 'click-avatar'])
+const emit = defineEmits(['toggle-select', 'press', 'clear-press', 'click-transfer', 'click-music-share', 'click-colisten', 'click-feed-share', 'view-recall', 'toggle-voice', 'click-avatar'])
 
 const { userProfile } = useProfile()
 const { getCharById } = useCharacters()
@@ -301,4 +328,17 @@ const stickerUrl = computed(() => {
 
 .msg-bubble.is-colisten-req { background: #eef2ff !important; color: #5c8aff !important; border: 1px solid rgba(92,138,255,0.3); padding: 12px 15px !important; cursor: pointer; text-align: center; }
 .msg-bubble.is-colisten-req:active { background: #e0e8ff !important; }
+
+.msg-bubble.is-feed-share { background: #ffffff !important; color: #1c1c1e !important; border-radius: 16px; padding: 12px; min-width: 220px; max-width: 280px; cursor: pointer; text-align: left; border: 1px solid #e5e7eb; box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; transition: transform 0.2s; }
+.msg-bubble.is-feed-share:active { transform: scale(0.98); }
+.msg-row.is-user .msg-bubble.is-feed-share { background: #eafff9 !important; border-color: rgba(20,204,204,0.25); }
+.feed-share-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.feed-share-icon { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #14CCCC, #0db4b4); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; flex-shrink: 0; }
+.feed-share-meta { flex: 1; min-width: 0; }
+.feed-share-label { font-size: 10px; color: #8e8e93; margin-bottom: 3px; }
+.feed-share-author { font-size: 13px; font-weight: 700; color: #1c1c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.feed-share-content { font-size: 13px; line-height: 1.55; color: #374151; white-space: pre-wrap; word-break: break-word; }
+.feed-share-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.feed-share-tags span { font-size: 10px; color: #14CCCC; background: rgba(20,204,204,0.08); padding: 3px 7px; border-radius: 10px; font-weight: 600; }
+.feed-share-note { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e5e7eb; font-size: 12px; color: #6b7280; font-style: italic; }
 </style>

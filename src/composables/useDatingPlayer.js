@@ -5,6 +5,9 @@ import db from '@/db'
 const playerProfile = ref({
   id: 1, 
   nickname: 'Player_One',
+  name: 'Player_One', // 兼容广场新生态
+  gender: '保密',     // 兼容广场新生态
+  age: 18,           // 兼容广场新生态
   bio: '一个普通的地球人，偶尔想去火星看看。',
   cover: '',
   customCss: '',
