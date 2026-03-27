@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">veso-phone</string>
+    <string name="title_activity_main">veso-phone</string>
+    <string name="package_name">com.veso.phone</string>
+    <string name="custom_url_scheme">com.veso.phone</string>
+</resources>

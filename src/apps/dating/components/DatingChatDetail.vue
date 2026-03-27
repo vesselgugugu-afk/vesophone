@@ -78,7 +78,7 @@
       <ChatBottomBar 
         v-if="chatData && chatData.status !== 'revealed' && chatData.status !== 'exited'"
         :chat="pseudoChatObj"
-        :musicState="{}"
+        :musicState="musicState"
         :isSelectionMode="isSelectionMode"
         :quotingText="quotingText"
         @send-text="handleSendText"
@@ -91,6 +91,8 @@
         @open-summary="showSummaryPanel = true"
         @reroll="forceRegenerate"
         @delete-selected="deleteSelected"
+        @open-local-music="handleDatingMusicEntry"
+        @toggle-colisten="handleDatingColistenEntry"
       />
 
       <!-- 长按操作菜单 -->
@@ -186,18 +188,6 @@
 </template>
 
 <script setup>
-/**
- * 冷推聊天详情页
- *
- * 这次针对“帖子分享音乐”补的重点：
- * 1. feed_share -> API 文本翻译时，把音乐附件也翻译给 AI
- * 2. 点击 feed_share 卡片打开详情时，把 attachment 一起带进 PostDetailSheet
- *
- * 这样：
- * - 你把一条音乐帖转发到冷推私聊
- * - AI 能理解“你分享了一首歌”
- * - 点开详情时也能看到音乐卡片
- */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import db from '@/db'
 import { useApi } from '@/composables/useApi'
@@ -207,7 +197,7 @@ import { useCharacters } from '@/composables/useCharacters'
 import { useDatingMatch } from '@/composables/useDatingMatch'
 import { useDatingPlayer } from '@/composables/useDatingPlayer'
 import { useDatingAvatar } from '@/composables/useDatingAvatar'
-import { useTime } from '@/composables/useTime'
+import { useMusic } from '@/composables/useMusic'
 
 import ChatMessageItem from '@/apps/qq/components/ChatMessageItem.vue'
 import ChatBottomBar from '@/apps/qq/components/ChatBottomBar.vue'
@@ -227,7 +217,7 @@ const { getEmptyCharacter, saveCharacter, characters } = useCharacters()
 const { getDatingAnonymityRule, parseAIAction } = useDatingMatch()
 const { playerProfile } = useDatingPlayer()
 const { getStableAvatar } = useDatingAvatar()
-const { currentTime } = useTime()
+const { musicState } = useMusic()
 
 const chatData = ref(null)
 const chatProfile = ref(null)
@@ -258,6 +248,18 @@ const actionSheet = ref({ show: false, msg: null })
 const isSelectionMode = ref(false)
 const selectedMsgs = ref([])
 
+const safeChatSessions = computed(() => {
+  if (chatSessions && Array.isArray(chatSessions.value)) return chatSessions.value
+  return []
+})
+
+const safePlayerSettings = computed(() => {
+  if (playerProfile && playerProfile.value && playerProfile.value.settings) {
+    return playerProfile.value.settings
+  }
+  return {}
+})
+
 const undercoverChar = computed(() => {
   if (chatProfile.value && chatProfile.value.realCharId) {
     return characters.value.find(c => c.id === chatProfile.value.realCharId)
@@ -272,6 +274,9 @@ watch(() => props.show, async (val) => {
       chatProfile.value = await db.dating_profiles.get(chatData.value.profileId)
       messages.value = await db.messages.where({ sessionId: `dating_${props.chatId}` }).toArray()
       scrollToBottom()
+    } else {
+      chatProfile.value = null
+      messages.value = []
     }
   } else {
     chatData.value = null
@@ -446,7 +451,36 @@ const handleRestricted = (type) => {
   if (type === 'offline') restrictedAlert.value = { show: true, type: 'offline', title: '安全中心提醒', desc: '网警提醒您：网络交友需谨慎！\n匿名模式下严禁线下奔现，请先交换真实身份并加为好友。', icon: 'fas fa-shield-alt' }
 }
 
+/**
+ * dating 底栏里的“分享音乐”入口
+ * 目前先给出明确提示，避免按钮无响应
+ */
+const handleDatingMusicEntry = () => {
+  restrictedAlert.value = {
+    show: true,
+    type: 'memory',
+    title: '音乐分享入口建设中',
+    desc: '冷推聊天目前已接入音乐状态，但“直接选歌分享”面板还未开放。你可以先去广场发音乐动态，或等待下一版入口接入。',
+    icon: 'fas fa-music'
+  }
+}
+
+/**
+ * dating 底栏里的“一起听”入口
+ * 目前先给出明确提示，避免死按钮
+ */
+const handleDatingColistenEntry = () => {
+  restrictedAlert.value = {
+    show: true,
+    type: 'memory',
+    title: '一起听暂未开放',
+    desc: '冷推私聊已接入音乐状态显示，但“一起听”完整交互链路尚未正式开放，所以这里先做提示处理，避免按钮无响应。',
+    icon: 'fas fa-headphones'
+  }
+}
+
 const handleDisconnect = async () => {
+  if (!props.chatId || !chatData.value) return
   if(confirm('确定要彻底断开连接并销毁该聊天数据吗？\n(对方将永远从列表中消失)')) {
     await db.dating_chats.delete(props.chatId)
     await db.dating_profiles.delete(chatData.value.profileId)
@@ -458,6 +492,7 @@ const handleDisconnect = async () => {
 }
 
 const pushLocalMessage = async (msgObj, targetChatId = props.chatId) => {
+  if (!targetChatId) return
   const fullMsg = { ...msgObj, timestamp: Date.now(), id: Date.now() + Math.random(), sessionId: `dating_${targetChatId}` }
   await db.messages.add(fullMsg)
   if (props.chatId === targetChatId && props.show) {
@@ -466,7 +501,7 @@ const pushLocalMessage = async (msgObj, targetChatId = props.chatId) => {
   }
   const cData = await db.dating_chats.get(targetChatId)
   if (cData && fullMsg.role === 'user') {
-    await db.dating_chats.update(targetChatId, { messageCount: cData.messageCount + 1 })
+    await db.dating_chats.update(targetChatId, { messageCount: (cData.messageCount || 0) + 1 })
   }
 }
 
@@ -501,12 +536,6 @@ const handleAlertConfirm = async () => {
   alert.value.show = false
 }
 
-/**
- * 把 feed_share 消息翻译成 AI 更容易理解的普通文本
- *
- * 这次新增：
- * - 如果 postSnapshot 带了音乐附件，把歌名 / 歌手 / 分享语也写进翻译文本
- */
 const buildMessagesForApi = () => {
   return messages.value.map(msg => {
     if (msg.type === 'feed_share') {
@@ -533,13 +562,6 @@ const buildMessagesForApi = () => {
   })
 }
 
-/**
- * 点击聊天中的“广场动态卡片”
- *
- * 这次新增：
- * - 带上 attachment
- * - 带上 repostOf.attachment（如果以后 postSnapshot 继续扩展，这里也更容易跟）
- */
 const handleClickFeedShare = (msg) => {
   const snapshot = msg.postSnapshot || {}
   currentSharedPost.value = {
@@ -564,6 +586,7 @@ const handleClickFeedShare = (msg) => {
 
 const triggerAiReply = async () => {
   if (isWaiting.value) return
+  if (!props.chatId) return
   isWaiting.value = true
   scrollToBottom()
   
@@ -575,7 +598,9 @@ const triggerAiReply = async () => {
 
     const sysIdxApi = apiMessages.findIndex(x => x.role === 'system')
     if (sysIdxApi > -1) {
-      const timeStr = `${currentTime.value.toLocaleDateString()} ${currentTime.value.toLocaleTimeString()} ${currentTime.value.toLocaleDateString('zh-CN', { weekday: 'long' })}`
+      const now = new Date()
+      const weekday = now.toLocaleDateString('zh-CN', { weekday: 'long' })
+      const timeStr = `${now.toLocaleDateString()} ${now.toLocaleTimeString()} ${weekday}`
       apiMessages[sysIdxApi].content += `\n\n【系统环境感知：当前设备的实时时间为 ${timeStr}。请严格根据这个时间决定你的回复状态。】`
       
       if (undercoverChar.value) {
@@ -594,10 +619,14 @@ const triggerAiReply = async () => {
     
     apiLog.value = { reqTokens: Math.ceil(JSON.stringify(apiMessages).length / 4), req: safeReq, time: new Date().toLocaleTimeString() }
 
-    const useSub = playerProfile.value.settings?.useSubApiForDating
+    const useSub = !!safePlayerSettings.value.useSubApiForDating
     const targetUrl = useSub && subApiUrl.value ? subApiUrl.value : apiUrl.value
     const targetKey = useSub && subApiKey.value ? subApiKey.value : apiKey.value
     const targetModel = useSub && subApiModel.value ? subApiModel.value : apiModel.value
+
+    if (!targetUrl || !targetKey || !targetModel) {
+      throw new Error('冷推聊天 API 配置不完整')
+    }
 
     const res = await fetch(targetUrl, {
       method: 'POST',
@@ -608,7 +637,7 @@ const triggerAiReply = async () => {
     if (!res.ok) throw new Error('API 访问失败')
     
     const data = await res.json()
-    let rawText = data.choices[0].message?.content || ''
+    let rawText = data.choices?.[0]?.message?.content || ''
     
     apiLog.value.res = rawText
     apiLog.value.resTokens = Math.ceil(rawText.length / 4)
@@ -633,11 +662,13 @@ const triggerAiReply = async () => {
 
     if (action === 'exit') {
       window.dispatchEvent(new CustomEvent('sys-toast', { detail: '对方已离开聊天室。' }))
-      if (playerProfile.value.settings?.autoDeleteOnExit) {
-        await db.dating_chats.delete(reqChatId)
-        await db.dating_profiles.delete(chatData.value.profileId)
-        await db.messages.where({ sessionId: `dating_${reqChatId}` }).delete()
-        window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
+      if (safePlayerSettings.value.autoDeleteOnExit) {
+        if (chatData.value) {
+          await db.dating_chats.delete(reqChatId)
+          await db.dating_profiles.delete(chatData.value.profileId)
+          await db.messages.where({ sessionId: `dating_${reqChatId}` }).delete()
+          window.dispatchEvent(new CustomEvent('dating-refresh-chats'))
+        }
       } else {
         await db.dating_chats.update(reqChatId, { status: 'exited' })
       }
@@ -664,10 +695,11 @@ const handleAcceptReveal = async () => {
 
   if (undercoverChar.value) {
     const realChar = undercoverChar.value
-    let realSession = chatSessions.value.find(c => !c.isGroup && c.participants && c.participants[0]?.id === realChar.id)
+    let realSession = safeChatSessions.value.find(c => !c.isGroup && c.participants && c.participants[0]?.id === realChar.id)
     if (!realSession) {
       realSession = createSession([realChar])
     }
+    if (!realSession) return
     
     const allMsgs = await db.messages.toArray()
     const msgsToMigrate = allMsgs.filter(m => m.sessionId === `dating_${props.chatId}`)
@@ -686,8 +718,8 @@ const handleAcceptReveal = async () => {
     return
   }
 
-  const fullJson = chatProfile.value.fullJson || {}
-  const realName = fullJson.name || chatProfile.value.nickname || '未知用户'
+  const fullJson = chatProfile.value?.fullJson || {}
+  const realName = fullJson.name || chatProfile.value?.nickname || '未知用户'
   
   const newChar = getEmptyCharacter()
   newChar.name = realName
@@ -695,12 +727,14 @@ const handleAcceptReveal = async () => {
   newChar.description = JSON.stringify(fullJson, null, 2)
   newChar.first_mes = '我们终于正式见面了。'
   newChar.extensions = { aero_vars: { variables: [], variablePresets: [] } }
-  newChar.avatar = getStableAvatar(chatProfile.value.nickname)
+  newChar.avatar = getStableAvatar(chatProfile.value?.nickname || realName)
 
   const newCharId = await saveCharacter(newChar) 
   const realChar = characters.value.find(c => c.id === newCharId)
+  if (!realChar) return
 
   const realSession = createSession([realChar])
+  if (!realSession) return
   realSession.isBlocked = true 
   realSession.isBlockedByAi = false
 
@@ -718,6 +752,10 @@ const handleAcceptReveal = async () => {
 
 const finishReveal = async () => {
   showSuccessModal.value = false
+  if (!props.chatId || !chatData.value) {
+    emit('close')
+    return
+  }
   await db.dating_chats.delete(props.chatId)
   await db.dating_profiles.delete(chatData.value.profileId)
   window.dispatchEvent(new CustomEvent('dating-refresh-chats'))

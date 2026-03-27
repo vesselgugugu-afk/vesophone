@@ -59,6 +59,15 @@
 </template>
 
 <script setup>
+/**
+ * 冷推 App 外层容器
+ *
+ * 这次修复：
+ * 1. 顶栏多出来一截的问题
+ *    - 原因是内嵌 App 环境里重复吃了 safe-area-inset-top
+ * 2. 这里逻辑不变，只保留布局修正
+ */
+
 import { ref, onMounted, onUnmounted } from 'vue'
 import DiscoverTab from './tabs/DiscoverTab.vue'
 import ChatsTab from './tabs/ChatsTab.vue'
@@ -164,8 +173,13 @@ const jumpToChat = (newChatId) => {
   transform: translateY(100%);
 }
 
+/**
+ * 修复顶栏高出来一截：
+ * 原来这里吃了 env(safe-area-inset-top)，但外层容器已经处理过安全区。
+ * 所以这里改成固定 padding，避免重复向下顶。
+ */
 .dating-header {
-  padding: calc(env(safe-area-inset-top) + 8px) 16px 12px;
+  padding: 8px 16px 12px;
   background: #ffffff;
   display: flex;
   align-items: center;
@@ -241,7 +255,7 @@ const jumpToChat = (newChatId) => {
 
 .elegant-toast-container {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 70px);
+  top: 70px;
   left: 0;
   width: 100%;
   display: flex;
