@@ -205,6 +205,7 @@
       <OfflineApp      :show="activeApp === 'offline'"      @close="activeApp = null" />
       <MemoryApp       :show="activeApp === 'memory'"       @close="activeApp = null" />
       <DatingApp       :show="activeApp === 'dating'"       @close="activeApp = null" />
+      <TodoApp         :show="activeApp === 'todo'"         @close="activeApp = null" />
       
     </div>
   </div>
@@ -229,6 +230,7 @@ import MiniCapsule     from '@/apps/music/components/MiniCapsule.vue'
 import OfflineApp      from '@/apps/offline/OfflineApp.vue'
 import MemoryApp       from '@/apps/memory/MemoryApp.vue'
 import DatingApp       from '@/apps/dating/DatingApp.vue'
+import TodoApp         from '@/apps/todo/TodoApp.vue'
 
 const { time } = useTime()
 const { appearance } = useAppearance()
@@ -372,6 +374,7 @@ const getAppBg = (item) => {
   let url = item.icon || appearance.value.icons[item.appId]
   if (item.appId === 'offline') return { backgroundColor: 'rgba(156, 39, 176, 0.15)' }
   if (item.appId === 'dating') return { backgroundColor: 'rgba(20, 204, 204, 0.15)' }
+  if (item.appId === 'todo') return { backgroundColor: 'rgba(255, 193, 7, 0.16)' }
   return url ? { backgroundImage: `url(${url})`, backgroundColor: 'transparent', border: 'none' } : {}
 }
 
@@ -393,6 +396,7 @@ onMounted(async () => {
     try {
       const bm = await navigator.getBattery()
       const updateBatteryInfo = () => { battery.value = Math.round(bm.level * 100); isCharging.value = bm.charging }
+      const updateChargingInfo = () => { battery.value = Math.round(bm.level * 100); isCharging.value = bm.charging }
       battery.value = Math.round(bm.level * 100); isCharging.value = bm.charging
       bm.addEventListener('levelchange', updateBatteryInfo)
       bm.addEventListener('chargingchange', updateChargingInfo)
